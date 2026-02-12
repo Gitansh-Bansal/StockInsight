@@ -39,6 +39,13 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'corsheaders',
+
+    # StockInsight domain apps
+    'fundamental',
+    'technical',
+    'sentiment',
+    'reports',
+    'analysis',
 ]
 
 MIDDLEWARE = [
