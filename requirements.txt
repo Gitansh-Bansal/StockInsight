@@ -3,3 +3,12 @@ Django==6.0.1
 django-cors-headers==4.9.0
 django-ninja==1.4.0
 sqlparse==0.5.5
+
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.24.0
+
+transformers>=4.30.0
+torch>=2.0.0
+
+google-generativeai>=0.8.0
