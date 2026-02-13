@@ -1,18 +1,3 @@
-# Workaround for Django 6 + django-ninja: Ninja registers 'uuid' but Django already
-# registers it, causing "Converter 'uuid' is already registered". Skip Ninja's registration.
-import django.urls.converters as _converters
-
-_original_register = _converters.register_converter
-
-
-def _patched_register(converter, type_name):
-    if type_name == "uuid" and type_name in _converters.get_converters():
-        return
-    _original_register(converter, type_name)
-
-
-_converters.register_converter = _patched_register
-
 """
 URL configuration for backend project.
 

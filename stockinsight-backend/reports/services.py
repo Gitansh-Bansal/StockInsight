@@ -6,7 +6,31 @@ import logging
 import os
 from typing import Any
 
+from dotenv import load_dotenv
+from google import genai
+
 logger = logging.getLogger(__name__)
+
+
+def _get_gemini_client() -> genai.Client | None:
+    """
+    Initialise a Gemini client using API key from .env (GEMINI_API_KEY).
+    Returns None if key or client is unavailable.
+    """
+    # Load environment variables from .env (project root)
+    load_dotenv()
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        logger.warning("GEMINI_API_KEY not set in environment/.env; using placeholder report.")
+        return None
+
+    try:
+        client = genai.Client(api_key=api_key)
+        return client
+    except Exception as exc:
+        logger.warning("Failed to initialise Gemini client: %s. Using placeholder report.", exc)
+        return None
 
 
 def generate_report(
@@ -19,19 +43,10 @@ def generate_report(
 ) -> str:
     """
     Call Gemini to produce a short comprehensive report (markdown or plain text).
-    Returns report string; on failure returns an error message string.
+    Returns report string; on failure returns a placeholder report string.
     """
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        logger.warning("GEMINI_API_KEY not set; returning placeholder report.")
-        return _placeholder_report(ticker, overall_score, verdict)
-
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-    except Exception as e:
-        logger.warning("Gemini not available: %s. Returning placeholder.", e)
+    client = _get_gemini_client()
+    if client is None:
         return _placeholder_report(ticker, overall_score, verdict)
 
     prompt = _build_prompt(
@@ -44,12 +59,16 @@ def generate_report(
     )
 
     try:
-        response = model.generate_content(prompt)
-        if response and response.text:
-            return response.text.strip()
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+        text = getattr(response, "text", "") or ""
+        if text.strip():
+            return text.strip()
         return _placeholder_report(ticker, overall_score, verdict)
-    except Exception as e:
-        logger.exception("Gemini generate_content failed: %s", e)
+    except Exception as exc:
+        logger.exception("Gemini generate_content failed: %s", exc)
         return _placeholder_report(ticker, overall_score, verdict)
 
 
@@ -63,7 +82,7 @@ def _build_prompt(
 ) -> str:
     """Build the prompt for Gemini."""
     parts = [
-        "You are a professional equity analyst. Write a concise comprehensive report (3–5 paragraphs) for the following stock analysis. Use clear, neutral language and cite the provided metrics.",
+        "You are a professional equity analyst. Write a comprehensive report for the following stock analysis. Use clear, neutral language and cite the provided metrics.",
         "",
         f"**Ticker:** {ticker.upper()}",
         f"**Overall score (0–100):** {overall_score}",
@@ -94,7 +113,14 @@ def _build_prompt(
 
     parts.extend([
         "",
-        "Write the report in markdown. Include: 1) Brief overview and verdict explanation, 2) Fundamental summary, 3) Technical summary, 4) Sentiment summary, 5) Conclusion and risk note.",
+        """Write the report in markdown. Follow the following structure: 
+        1) Executive Summary, 
+        2) Fundamental summary, 
+        3) Technical summary, 
+        4) Sentiment summary, 
+        5) Risk Factors,
+        5) Conclusion
+        Mention the risk disclaimer at end.""",
     ])
     return "\n".join(parts)
 
