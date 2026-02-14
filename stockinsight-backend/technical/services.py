@@ -10,6 +10,9 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+#this is comment 1
+#this is comment 2
+
 
 def _compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     delta = series.diff()
