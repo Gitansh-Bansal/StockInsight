@@ -48,17 +48,21 @@ const usdFormatter = new Intl.NumberFormat('en-US', {
 })
 
 function App() {
-  const { pathname, navigate } = usePathRouter()
+  const { pathname, search, navigate } = usePathRouter()
   const route = useMemo(() => parseRoute(pathname), [pathname])
+  const initialPeriod = useMemo(() => parsePeriodFromSearch(search), [search])
   const activeTicker = route.type === 'stock' ? route.ticker : null
 
   const handleSearch = useCallback(
-    (input: string) => {
+    (input: string, period: string) => {
       const ticker = normalizeTicker(input)
       if (!ticker) {
         return
       }
-      navigate(`/stock/${encodeURIComponent(ticker)}/overview`)
+      const chosenPeriod = normalizePeriod(period)
+      navigate(
+        `/stock/${encodeURIComponent(ticker)}/overview?period=${encodeURIComponent(chosenPeriod)}`,
+      )
     },
     [navigate],
   )
@@ -70,8 +74,10 @@ function App() {
   return (
     <div className="app-shell">
       <HeaderBar
-        key={activeTicker ?? 'home'}
+        key={`${activeTicker ?? 'home'}-${initialPeriod}`}
         initialSearch={activeTicker ?? ''}
+        initialPeriod={initialPeriod}
+        isHome={route.type === 'home'}
         onSearch={handleSearch}
         onHome={goHome}
       />
@@ -79,11 +85,14 @@ function App() {
       <main className="content">
         {route.type === 'stock' ? (
           <AnalysisPage
-            key={route.ticker}
+            key={`${route.ticker}-${initialPeriod}`}
             ticker={route.ticker}
+            initialPeriod={initialPeriod}
             tab={route.tab}
             onTabChange={(tab) =>
-              navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`)
+              navigate(
+                `/stock/${encodeURIComponent(route.ticker)}/${tab}?period=${encodeURIComponent(initialPeriod)}`,
+              )
             }
           />
         ) : (
@@ -96,16 +105,25 @@ function App() {
 
 type HeaderBarProps = {
   initialSearch: string
-  onSearch: (ticker: string) => void
+  initialPeriod: string
+  isHome: boolean
+  onSearch: (ticker: string, period: string) => void
   onHome: () => void
 }
 
-function HeaderBar({ initialSearch, onSearch, onHome }: HeaderBarProps) {
+function HeaderBar({
+  initialSearch,
+  initialPeriod,
+  isHome,
+  onSearch,
+  onHome,
+}: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState(initialSearch)
+  const [periodValue, setPeriodValue] = useState(initialPeriod)
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onSearch(searchValue)
+    onSearch(searchValue, periodValue)
   }
 
   return (
@@ -113,57 +131,84 @@ function HeaderBar({ initialSearch, onSearch, onHome }: HeaderBarProps) {
       <button className="brand" type="button" onClick={onHome}>
         StockInsight
       </button>
-      <form className="top-search" onSubmit={handleSubmit}>
-        <input
-          value={searchValue}
-          onChange={(event) => setSearchValue(event.target.value)}
-          placeholder="Search ticker (AAPL, MSFT, NVDA)"
-          aria-label="Search ticker symbol"
-        />
-        <button type="submit">Search</button>
-      </form>
+      {isHome ? (
+        <div className="top-actions">
+          <button type="button">Log In</button>
+          <button type="button" className="secondary">
+            Create Account
+          </button>
+        </div>
+      ) : (
+        <form className="top-search" onSubmit={handleSubmit}>
+          <div className="search-field">
+            <input
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+              placeholder="Search ticker (AAPL, MSFT, NVDA)"
+              aria-label="Search ticker symbol"
+            />
+            <select
+              value={periodValue}
+              onChange={(event) => setPeriodValue(event.target.value)}
+              aria-label="Select duration"
+            >
+              {PERIOD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button type="submit">Search</button>
+        </form>
+      )}
     </header>
   )
 }
 
 type HomePageProps = {
-  onSearch: (ticker: string) => void
+  onSearch: (ticker: string, period: string) => void
 }
 
 function HomePage({ onSearch }: HomePageProps) {
   const [tickerInput, setTickerInput] = useState('')
+  const [periodValue, setPeriodValue] = useState('1y')
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onSearch(tickerInput)
+    onSearch(tickerInput, periodValue)
   }
 
   return (
     <section className="hero">
-      <div className="hero-copy">
+      <div className="hero-single">
         <p className="kicker">Live equity intelligence workspace</p>
         <h1>One screen to inspect how a stock scores across core signals.</h1>
         <p>
           Search any ticker to open structured analysis sections for overall,
           fundamental, technical, and sentiment views.
         </p>
-        <div className="cta-row">
-          <button type="button">Log In (Coming Soon)</button>
-          <button type="button" className="secondary">
-            Create Account (Coming Soon)
-          </button>
-        </div>
-      </div>
-
-      <div className="hero-panel">
         <h2>Start With A Ticker</h2>
         <form className="hero-search" onSubmit={handleSubmit}>
-          <input
-            value={tickerInput}
-            onChange={(event) => setTickerInput(event.target.value)}
-            placeholder="Enter ticker"
-            aria-label="Ticker symbol input"
-          />
+          <div className="search-field">
+            <input
+              value={tickerInput}
+              onChange={(event) => setTickerInput(event.target.value)}
+              placeholder="Enter ticker"
+              aria-label="Ticker symbol input"
+            />
+            <select
+              value={periodValue}
+              onChange={(event) => setPeriodValue(event.target.value)}
+              aria-label="Select duration"
+            >
+              {PERIOD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <button type="submit">Open Analysis</button>
         </form>
         <p>Examples: AAPL, TSLA, AMZN, JPM, META.</p>
@@ -174,12 +219,13 @@ function HomePage({ onSearch }: HomePageProps) {
 
 type AnalysisPageProps = {
   ticker: string
+  initialPeriod: string
   tab: AnalysisTab
   onTabChange: (tab: AnalysisTab) => void
 }
 
-function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
-  const [period, setPeriod] = useState('1y')
+function AnalysisPage({ ticker, initialPeriod, tab, onTabChange }: AnalysisPageProps) {
+  const [period, setPeriod] = useState(initialPeriod)
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -591,11 +637,17 @@ function LoadingPanel({ tab }: { tab: AnalysisTab }) {
 }
 
 function usePathRouter() {
-  const [pathname, setPathname] = useState(() => window.location.pathname)
+  const [locationState, setLocationState] = useState(() => ({
+    pathname: window.location.pathname,
+    search: window.location.search,
+  }))
 
   useEffect(() => {
     const onPopState = () => {
-      setPathname(window.location.pathname)
+      setLocationState({
+        pathname: window.location.pathname,
+        search: window.location.search,
+      })
     }
     window.addEventListener('popstate', onPopState)
     return () => {
@@ -604,14 +656,20 @@ function usePathRouter() {
   }, [])
 
   const navigate = useCallback((path: string) => {
-    if (path !== window.location.pathname) {
-      window.history.pushState({}, '', path)
+    const target = new URL(path, window.location.origin)
+    const current = `${window.location.pathname}${window.location.search}`
+    const next = `${target.pathname}${target.search}`
+    if (next !== current) {
+      window.history.pushState({}, '', next)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
-    setPathname(path)
+    setLocationState({
+      pathname: target.pathname,
+      search: target.search,
+    })
   }, [])
 
-  return { pathname, navigate }
+  return { pathname: locationState.pathname, search: locationState.search, navigate }
 }
 
 function parseRoute(pathname: string): AppRoute {
@@ -631,6 +689,20 @@ function parseRoute(pathname: string): AppRoute {
   } catch {
     return { type: 'home' }
   }
+}
+
+function parsePeriodFromSearch(search: string): string {
+  const params = new URLSearchParams(search)
+  const raw = params.get('period') ?? '1y'
+  return normalizePeriod(raw)
+}
+
+function normalizePeriod(value: string): string {
+  const allowed = new Set(PERIOD_OPTIONS.map((option) => option.value))
+  if (allowed.has(value)) {
+    return value
+  }
+  return '1y'
 }
 
 function normalizeTab(value: string): AnalysisTab {
@@ -678,12 +750,13 @@ function buildTradingViewChartUrl(symbol: string, interval: string): string {
     locale: 'en',
     timezone: 'Etc/UTC',
     withdateranges: '1',
+    hide_side_toolbar: '1',
     hideideas: '1',
     allow_symbol_change: '0',
     saveimage: '1',
     toolbarbg: 'f7f3eb',
     studies: '[]',
-    details: '1',
+    details: '0',
     hotlist: '0',
     calendar: '0',
     support_host: 'https://www.tradingview.com',
