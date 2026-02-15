@@ -67,7 +67,6 @@ def _analyze_with_finbert(headlines: List[str]) -> float:
 
     avg = total / count  # -1..1
 
-    print(avg)
     # Map -1..1 to 0..100 (e.g. -1→0, 0→50, 1→100)
     return round(50 + 50 * max(-1.0, min(1.0, avg)), 1)
 

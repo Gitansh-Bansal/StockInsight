@@ -1,7 +1,8 @@
 """
-Comprehensive report: generate a written analysis using Gemini LLM from fundamental,
-technical, sentiment results, overall score, and verdict.
+LLM report generation: produce sectioned summaries using Gemini with a
+deterministic fallback.
 """
+import json
 import logging
 import os
 from typing import Any
@@ -12,44 +13,57 @@ from google import genai
 logger = logging.getLogger(__name__)
 
 
-def _get_gemini_client() -> genai.Client | None:
-    """
-    Initialise a Gemini client using API key from .env (GEMINI_API_KEY).
-    Returns None if key or client is unavailable.
-    """
-    # Load environment variables from .env (project root)
-    load_dotenv()
+ReportSections = dict[str, str]
+ReportBundle = dict[str, Any]
 
+
+def _get_gemini_client() -> genai.Client | None:
+    """Initialise Gemini client from GEMINI_API_KEY."""
+    load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        logger.warning("GEMINI_API_KEY not set in environment/.env; using placeholder report.")
+        logger.warning("GEMINI_API_KEY not set; using fallback section summaries.")
         return None
-
     try:
-        client = genai.Client(api_key=api_key)
-        return client
+        return genai.Client(api_key=api_key)
     except Exception as exc:
-        logger.warning("Failed to initialise Gemini client: %s. Using placeholder report.", exc)
+        logger.warning("Failed to initialise Gemini client: %s", exc)
         return None
 
 
-def generate_report(
+def generate_report_bundle(
     ticker: str,
     fundamental_result: dict[str, Any] | None,
     technical_result: dict[str, Any] | None,
     sentiment_result: dict[str, Any] | None,
     overall_score: float,
     verdict: str,
-) -> str:
+) -> ReportBundle:
     """
-    Call Gemini to produce a short comprehensive report (markdown or plain text).
-    Returns report string; on failure returns a placeholder report string.
+    Generate sectioned LLM report. Returns:
+    {
+      "source": "gemini" | "fallback",
+      "fullReport": str,
+      "sections": {
+        "overall": str,
+        "fundamental": str,
+        "technical": str,
+        "sentiment": str,
+        "riskFactors": str,
+        "conclusion": str,
+        "disclaimer": str
+      }
+    }
     """
     client = _get_gemini_client()
     if client is None:
-        return _placeholder_report(ticker, overall_score, verdict)
+        return _placeholder_report_bundle(
+            ticker=ticker,
+            overall_score=overall_score,
+            verdict=verdict,
+        )
 
-    prompt = _build_prompt(
+    prompt = _build_structured_prompt(
         ticker=ticker,
         fundamental_result=fundamental_result,
         technical_result=technical_result,
@@ -63,16 +77,36 @@ def generate_report(
             model="gemini-2.5-flash",
             contents=prompt,
         )
-        text = getattr(response, "text", "") or ""
-        if text.strip():
-            return text.strip()
-        return _placeholder_report(ticker, overall_score, verdict)
+        raw_text = (getattr(response, "text", "") or "").strip()
+        parsed = _parse_json_object(raw_text)
+        if parsed is None:
+            logger.warning("Gemini response was not valid JSON. Falling back.")
+            return _placeholder_report_bundle(
+                ticker=ticker,
+                overall_score=overall_score,
+                verdict=verdict,
+            )
+
+        sections = _normalise_sections(parsed)
+        full_report = str(parsed.get("fullReportMarkdown") or "").strip()
+        if not full_report:
+            full_report = _build_markdown_from_sections(ticker, sections)
+
+        return {
+            "source": "gemini",
+            "fullReport": full_report,
+            "sections": sections,
+        }
     except Exception as exc:
-        logger.exception("Gemini generate_content failed: %s", exc)
-        return _placeholder_report(ticker, overall_score, verdict)
+        logger.exception("Gemini generation failed: %s", exc)
+        return _placeholder_report_bundle(
+            ticker=ticker,
+            overall_score=overall_score,
+            verdict=verdict,
+        )
 
 
-def _build_prompt(
+def generate_report(
     ticker: str,
     fundamental_result: dict[str, Any] | None,
     technical_result: dict[str, Any] | None,
@@ -80,60 +114,221 @@ def _build_prompt(
     overall_score: float,
     verdict: str,
 ) -> str:
-    """Build the prompt for Gemini."""
-    parts = [
-        "You are a professional equity analyst. Write a comprehensive report for the following stock analysis. Use clear, neutral language and cite the provided metrics.",
-        "",
-        f"**Ticker:** {ticker.upper()}",
-        f"**Overall score (0–100):** {overall_score}",
-        f"**Verdict:** {verdict}",
-        "",
-    ]
-
-    if fundamental_result:
-        data = fundamental_result.get("data") or {}
-        score = fundamental_result.get("score")
-        parts.append(f"**Fundamental score:** {score}. Key data: P/E {data.get('trailingPE')}, PEG {data.get('pegRatio')}, Market cap {data.get('marketCap')}, Sector {data.get('sector')}, 52w range {data.get('52WeekLow')}–{data.get('52WeekHigh')}.")
-    else:
-        parts.append("**Fundamental:** Data unavailable.")
-
-    if technical_result:
-        data = technical_result.get("data") or {}
-        score = technical_result.get("score")
-        parts.append(f"**Technical score:** {score}. Last close {data.get('lastClose')}, SMA20 {data.get('sma20')}, SMA50 {data.get('sma50')}, RSI {data.get('rsi')}.")
-    else:
-        parts.append("**Technical:** Data unavailable.")
-
-    if sentiment_result:
-        score = sentiment_result.get("score")
-        count = (sentiment_result.get("data") or {}).get("count", 0)
-        parts.append(f"**Sentiment score:** {score}. Based on {count} news headlines.")
-    else:
-        parts.append("**Sentiment:** Data unavailable.")
-
-    parts.extend([
-        "",
-        """Write the report in markdown. Follow the following structure: 
-        1) Executive Summary, 
-        2) Fundamental summary, 
-        3) Technical summary, 
-        4) Sentiment summary, 
-        5) Risk Factors,
-        5) Conclusion
-        Mention the risk disclaimer at end.""",
-    ])
-    return "\n".join(parts)
+    """Backward-compatible string report API."""
+    bundle = generate_report_bundle(
+        ticker=ticker,
+        fundamental_result=fundamental_result,
+        technical_result=technical_result,
+        sentiment_result=sentiment_result,
+        overall_score=overall_score,
+        verdict=verdict,
+    )
+    return str(bundle.get("fullReport") or "")
 
 
-def _placeholder_report(ticker: str, overall_score: float, verdict: str) -> str:
-    return f"""# Stock Analysis Report: {ticker.upper()}
+def _build_structured_prompt(
+    ticker: str,
+    fundamental_result: dict[str, Any] | None,
+    technical_result: dict[str, Any] | None,
+    sentiment_result: dict[str, Any] | None,
+    overall_score: float,
+    verdict: str,
+) -> str:
+    fundamental_data = (fundamental_result or {}).get("data") or {}
+    technical_data = (technical_result or {}).get("data") or {}
+    sentiment_data = (sentiment_result or {}).get("data") or {}
 
-## Overview
-Overall score: **{overall_score}/100**. Verdict: **{verdict}**.
+    payload = {
+        "ticker": ticker.upper(),
+        "overallScore": overall_score,
+        "verdict": verdict,
+        "scoringSystem": {
+            "overallWeights": {
+                "fundamental": 0.35,
+                "technical": 0.35,
+                "sentiment": 0.30,
+            },
+            "technicalRules": {
+                "priceVsSma20": "close>sma20 +5 else -3",
+                "priceVsSma50": "close>sma50 +5 else -2",
+                "rsi": "40-60 +3, <30 +4, >70 -4",
+                "fiftyTwoWeekPosition": "30%-70% +2, >90% -2",
+                "baseScore": 50,
+            },
+            "sentimentRules": {
+                "model": "FinBERT",
+                "labels": {"positive": 1, "neutral": 0, "negative": -1},
+                "mapping": "weighted average in [-1,1], mapped to score = 50 + 50*avg",
+            },
+            "fundamentalRules": (
+                "Sector-aware composite score from valuation, profitability, "
+                "financial health, growth, and penalties."
+            ),
+        },
+        "fundamentalScore": (fundamental_result or {}).get("score"),
+        "technicalScore": (technical_result or {}).get("score"),
+        "sentimentScore": (sentiment_result or {}).get("score"),
+        "fundamentalData": {
+            "sector": fundamental_data.get("sector"),
+            "industry": fundamental_data.get("industry"),
+            "currentPrice": fundamental_data.get("currentPrice"),
+            "trailingPE": fundamental_data.get("trailingPE"),
+            "forwardPE": fundamental_data.get("forwardPE"),
+            "pegRatio": fundamental_data.get("pegRatio"),
+            "priceToBook": fundamental_data.get("priceToBook"),
+            "returnOnEquity": fundamental_data.get("returnOnEquity"),
+            "operatingMargins": fundamental_data.get("operatingMargins"),
+            "profitMargins": fundamental_data.get("profitMargins"),
+            "debtToEquity": fundamental_data.get("debtToEquity"),
+            "revenueGrowth": fundamental_data.get("revenueGrowth"),
+            "earningsGrowth": fundamental_data.get("earningsGrowth"),
+            "dividendYield": fundamental_data.get("dividendYield"),
+            "marketCap": fundamental_data.get("marketCap"),
+            "fiftyTwoWeekLow": fundamental_data.get("52WeekLow"),
+            "fiftyTwoWeekHigh": fundamental_data.get("52WeekHigh"),
+        },
+        "technicalData": {
+            "period": technical_data.get("period"),
+            "lastClose": technical_data.get("lastClose"),
+            "sma20": technical_data.get("sma20"),
+            "sma50": technical_data.get("sma50"),
+            "rsi": technical_data.get("rsi"),
+            "fiftyTwoWeekLow": technical_data.get("52WeekLow"),
+            "fiftyTwoWeekHigh": technical_data.get("52WeekHigh"),
+        },
+        "sentimentData": {
+            "headlineCount": sentiment_data.get("count"),
+        },
+    }
 
-## Summary
-This report is based on fundamental metrics, technical indicators, and news sentiment. Configure `GEMINI_API_KEY` to generate a full LLM-powered report.
+    return (
+        "You are a professional equity analyst.\n"
+        "Given the JSON input, generate a sectioned stock analysis.\n"
+        "Critical requirement: explain WHY each score is what it is using the "
+        "provided metrics and scoring rules, not score-band storytelling.\n"
+        "Do not infer quality only from the numeric score; tie every conclusion "
+        "to explicit inputs (for example: P/E, margins, RSI, SMA relation, "
+        "headline count, etc.).\n"
+        "If a metric is missing, do not use it.\n"
+        "Return ONLY valid JSON and nothing else.\n"
+        "JSON schema:\n"
+        "{\n"
+        '  "overall": "3-5 sentences: include component scores, weights, and why weighted result supports verdict",\n'
+        '  "fundamental": "3-5 sentences: explain score drivers from valuation/profitability/health/growth metrics",\n'
+        '  "technical": "3-5 sentences: explain score from SMA/RSI/52-week-rule effects",\n'
+        '  "sentiment": "3-5 sentences: explain score from FinBERT headline signal and count",\n'
+        '  "riskFactors": "2-4 sentences",\n'
+        '  "conclusion": "2-4 sentences",\n'
+        '  "disclaimer": "1 sentence",\n'
+        '  "fullReportMarkdown": "full markdown report with matching sections"\n'
+        "}\n"
+        "Style rules:\n"
+        "- Be concise and neutral.\n"
+        "- Quote concrete metric values when available.\n"
+        "- Avoid generic phrases like 'high score indicates strength' unless you "
+        "also provide causal metric evidence.\n"
+        "- Do not invent unavailable metrics.\n"
+        f"Input JSON:\n{json.dumps(payload, ensure_ascii=True)}"
+    )
 
-## Risk Disclaimer
-This is not investment advice. Do your own research before making decisions.
-"""
+
+def _parse_json_object(raw_text: str) -> dict[str, Any] | None:
+    if not raw_text:
+        return None
+
+    # Fast path: entire response is JSON
+    try:
+        obj = json.loads(raw_text)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+
+    # Fallback: extract first JSON object block from markdown/text
+    start = raw_text.find("{")
+    end = raw_text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+
+    candidate = raw_text[start : end + 1]
+    try:
+        obj = json.loads(candidate)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        return None
+    return None
+
+
+def _normalise_sections(parsed: dict[str, Any]) -> ReportSections:
+    def _text(key: str, default: str) -> str:
+        value = parsed.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return default
+
+    return {
+        "overall": _text("overall", "Overall section unavailable."),
+        "fundamental": _text("fundamental", "Fundamental section unavailable."),
+        "technical": _text("technical", "Technical section unavailable."),
+        "sentiment": _text("sentiment", "Sentiment section unavailable."),
+        "riskFactors": _text("riskFactors", "Risk section unavailable."),
+        "conclusion": _text("conclusion", "Conclusion unavailable."),
+        "disclaimer": _text(
+            "disclaimer",
+            "This is not investment advice. Do your own research.",
+        ),
+    }
+
+
+def _build_markdown_from_sections(ticker: str, sections: ReportSections) -> str:
+    return (
+        f"# Stock Analysis Report: {ticker.upper()}\n\n"
+        "## Overall\n"
+        f"{sections['overall']}\n\n"
+        "## Fundamental\n"
+        f"{sections['fundamental']}\n\n"
+        "## Technical\n"
+        f"{sections['technical']}\n\n"
+        "## Sentiment\n"
+        f"{sections['sentiment']}\n\n"
+        "## Risk Factors\n"
+        f"{sections['riskFactors']}\n\n"
+        "## Conclusion\n"
+        f"{sections['conclusion']}\n\n"
+        "## Disclaimer\n"
+        f"{sections['disclaimer']}\n"
+    )
+
+
+def _placeholder_report_bundle(
+    ticker: str,
+    overall_score: float,
+    verdict: str,
+) -> ReportBundle:
+    sections: ReportSections = {
+        "overall": (
+            f"Overall score is {overall_score}/100 with a {verdict} verdict "
+            "based on the combined model signals."
+        ),
+        "fundamental": (
+            "Fundamental interpretation is unavailable from Gemini at the moment. "
+            "Fallback logic can still be used in the frontend."
+        ),
+        "technical": (
+            "Technical interpretation is unavailable from Gemini at the moment. "
+            "Fallback logic can still be used in the frontend."
+        ),
+        "sentiment": (
+            "Sentiment interpretation is unavailable from Gemini at the moment. "
+            "Fallback logic can still be used in the frontend."
+        ),
+        "riskFactors": "Macro conditions, earnings misses, and sector rotation remain key risks.",
+        "conclusion": "Current output should be treated as informational, not a recommendation.",
+        "disclaimer": "This is not investment advice. Do your own research.",
+    }
+    return {
+        "source": "fallback",
+        "fullReport": _build_markdown_from_sections(ticker, sections),
+        "sections": sections,
+    }

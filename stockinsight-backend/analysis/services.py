@@ -8,7 +8,7 @@ from typing import Any
 from fundamental.services import get_fundamental_analysis
 from technical.services import get_technical_analysis
 from sentiment.services import get_sentiment_analysis
-from reports.services import generate_report
+from reports.services import generate_report_bundle
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +58,15 @@ def _compute_verdict(overall_score: float) -> str:
     return "Sell"
 
 
-def run_full_analysis(ticker: str, period: str = "1y") -> dict[str, Any] | None:
+def run_full_analysis(
+    ticker: str,
+    period: str = "1y",
+    include_report: bool = True,
+) -> dict[str, Any] | None:
     """
     Run fundamental, technical, and sentiment analysis; compute overall score and
-    verdict; generate LLM report. Returns one combined payload for the frontend, or
-    None if ticker is invalid (e.g. no fundamental data at all).
+    verdict; optionally generate LLM report.
+    Returns one combined payload for the frontend, or None if ticker is invalid.
     """
     ticker = ticker.upper().strip()
     fundamental_result = get_fundamental_analysis(ticker)
@@ -82,14 +86,20 @@ def run_full_analysis(ticker: str, period: str = "1y") -> dict[str, Any] | None:
     )
     verdict = _compute_verdict(overall_score)
 
-    report_text = generate_report(
-        ticker=ticker,
-        fundamental_result=fundamental_result,
-        technical_result=technical_result,
-        sentiment_result=sentiment_result,
-        overall_score=overall_score,
-        verdict=verdict,
-    )
+    report_bundle: dict[str, Any] = {
+        "source": "disabled",
+        "fullReport": "",
+        "sections": {},
+    }
+    if include_report:
+        report_bundle = generate_report_bundle(
+            ticker=ticker,
+            fundamental_result=fundamental_result,
+            technical_result=technical_result,
+            sentiment_result=sentiment_result,
+            overall_score=overall_score,
+            verdict=verdict,
+        )
 
     return {
         "ticker": ticker,
@@ -103,5 +113,7 @@ def run_full_analysis(ticker: str, period: str = "1y") -> dict[str, Any] | None:
         "fundamental": fundamental_result,
         "technical": technical_result,
         "sentiment": sentiment_result,
-        "report": report_text,
+        "report": report_bundle.get("fullReport", ""),
+        "reportSections": report_bundle.get("sections", {}),
+        "reportSource": report_bundle.get("source", "unknown"),
     }
