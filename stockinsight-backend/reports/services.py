@@ -126,6 +126,50 @@ def generate_report(
     return str(bundle.get("fullReport") or "")
 
 
+def _extract_technical_prompt_data(
+    technical_result: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """
+    Build a Gemini-ready technical payload from either:
+    1) legacy shape with `data`, or
+    2) current shape with top-level `indicators` / `structure`.
+    """
+    technical_payload = technical_result or {}
+    technical_data = technical_payload.get("data") or {}
+    indicators = technical_payload.get("indicators") or {}
+    structure = technical_payload.get("structure") or {}
+
+    return {
+        "symbol": technical_data.get("symbol") or technical_payload.get("symbol"),
+        "period": technical_data.get("period"),
+        "trend": technical_payload.get("trend"),
+        "signal": technical_payload.get("signal"),
+        "reasons": technical_payload.get("reasons") or [],
+        "lastClose": technical_data.get("lastClose", indicators.get("close")),
+        "sma20": technical_data.get("sma20", indicators.get("SMA20")),
+        "sma50": technical_data.get("sma50", indicators.get("SMA50")),
+        "sma200": indicators.get("SMA200"),
+        "rsi": technical_data.get("rsi", indicators.get("RSI")),
+        "macd": indicators.get("MACD"),
+        "macdSignal": indicators.get("MACD_signal"),
+        "adx": indicators.get("ADX"),
+        "atr": indicators.get("ATR"),
+        "fiftyTwoWeekLow": technical_data.get(
+            "52WeekLow",
+            indicators.get("52WeekLow"),
+        ),
+        "fiftyTwoWeekHigh": technical_data.get(
+            "52WeekHigh",
+            indicators.get("52WeekHigh"),
+        ),
+        "breakout": structure.get("breakout"),
+        "volumeSpike": structure.get("volumeSpike"),
+        "supportLevels": structure.get("support"),
+        "resistanceLevels": structure.get("resistance"),
+        "fibonacciLevels": structure.get("fibonacciLevels"),
+    }
+
+
 def _build_structured_prompt(
     ticker: str,
     fundamental_result: dict[str, Any] | None,
@@ -135,7 +179,7 @@ def _build_structured_prompt(
     verdict: str,
 ) -> str:
     fundamental_data = (fundamental_result or {}).get("data") or {}
-    technical_data = (technical_result or {}).get("data") or {}
+    technical_data = _extract_technical_prompt_data(technical_result)
     sentiment_data = (sentiment_result or {}).get("data") or {}
 
     payload = {
@@ -188,13 +232,27 @@ def _build_structured_prompt(
             "fiftyTwoWeekHigh": fundamental_data.get("52WeekHigh"),
         },
         "technicalData": {
+            "symbol": technical_data.get("symbol"),
             "period": technical_data.get("period"),
+            "trend": technical_data.get("trend"),
+            "signal": technical_data.get("signal"),
+            "reasons": technical_data.get("reasons"),
             "lastClose": technical_data.get("lastClose"),
             "sma20": technical_data.get("sma20"),
             "sma50": technical_data.get("sma50"),
+            "sma200": technical_data.get("sma200"),
             "rsi": technical_data.get("rsi"),
-            "fiftyTwoWeekLow": technical_data.get("52WeekLow"),
-            "fiftyTwoWeekHigh": technical_data.get("52WeekHigh"),
+            "macd": technical_data.get("macd"),
+            "macdSignal": technical_data.get("macdSignal"),
+            "adx": technical_data.get("adx"),
+            "atr": technical_data.get("atr"),
+            "fiftyTwoWeekLow": technical_data.get("fiftyTwoWeekLow"),
+            "fiftyTwoWeekHigh": technical_data.get("fiftyTwoWeekHigh"),
+            "breakout": technical_data.get("breakout"),
+            "volumeSpike": technical_data.get("volumeSpike"),
+            "supportLevels": technical_data.get("supportLevels"),
+            "resistanceLevels": technical_data.get("resistanceLevels"),
+            "fibonacciLevels": technical_data.get("fibonacciLevels"),
         },
         "sentimentData": {
             "headlineCount": sentiment_data.get("count"),

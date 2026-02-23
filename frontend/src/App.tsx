@@ -8,6 +8,7 @@ import type {
   ReportSections,
   SentimentHeadline,
   TechnicalData,
+  TechnicalResult,
 } from './types'
 
 const PERIOD_OPTIONS = [
@@ -326,7 +327,7 @@ function AnalysisPage({ ticker, initialPeriod, tab, onTabChange }: AnalysisPageP
         </div>
       )}
 
-      {!isLoading && !error && analysis && renderSection(tab, analysis)}
+      {!isLoading && !error && analysis && renderSection(tab, analysis, period)}
     </section>
   )
 }
@@ -423,10 +424,15 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
 
 type TechnicalSectionProps = {
   result: AnalysisResponse['technical']
+  selectedPeriod: string
   llmSummary?: string
 }
 
-function TechnicalSection({ result, llmSummary }: TechnicalSectionProps) {
+function TechnicalSection({
+  result,
+  selectedPeriod,
+  llmSummary,
+}: TechnicalSectionProps) {
   if (!result) {
     return (
       <UnavailablePanel title="Technical Analysis">
@@ -435,10 +441,11 @@ function TechnicalSection({ result, llmSummary }: TechnicalSectionProps) {
     )
   }
 
-  const data: TechnicalData = result.data
-  const trendText = llmSummary?.trim() || describeTrend(data)
+  const data = resolveTechnicalData(result, selectedPeriod)
+  const trendText =
+    llmSummary?.trim() || describeTechnicalSignal(result) || describeTrend(data)
   const tradingViewSymbol = toTradingViewSymbol(data.symbol)
-  const tradingViewInterval = tradingViewIntervalFromPeriod(data.period)
+  const tradingViewInterval = tradingViewIntervalFromPeriod(selectedPeriod)
   const tradingViewUrl = buildTradingViewChartUrl(
     tradingViewSymbol,
     tradingViewInterval,
@@ -464,12 +471,14 @@ function TechnicalSection({ result, llmSummary }: TechnicalSectionProps) {
           <h3>Data used</h3>
           <MetricList
             rows={[
+              ['Trend', safeText(result.trend)],
+              ['Signal', safeText(result.signal)],
               ['Last close', formatCurrency(data.lastClose, 'USD')],
               ['SMA20', formatCurrency(data.sma20, 'USD')],
               ['SMA50', formatCurrency(data.sma50, 'USD')],
               ['RSI (14)', formatNumber(data.rsi)],
               ['52W range', rangeValue(data['52WeekLow'], data['52WeekHigh'], 'USD')],
-              ['Selected period', data.period],
+              ['Selected period', selectedPeriod],
             ]}
           />
         </aside>
@@ -535,7 +544,11 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
   )
 }
 
-function renderSection(tab: AnalysisTab, analysis: AnalysisResponse) {
+function renderSection(
+  tab: AnalysisTab,
+  analysis: AnalysisResponse,
+  selectedPeriod: string,
+) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
 
   switch (tab) {
@@ -550,6 +563,7 @@ function renderSection(tab: AnalysisTab, analysis: AnalysisResponse) {
       return (
         <TechnicalSection
           result={analysis.technical}
+          selectedPeriod={selectedPeriod}
           llmSummary={llmSections.technical}
         />
       )
@@ -868,6 +882,41 @@ function summarizeScore(
     return 'News tone is balanced overall, without a dominant positive or negative signal.'
   }
   return 'Recent news flow is skewed negative and may weigh on near-term sentiment.'
+}
+
+function resolveTechnicalData(
+  result: TechnicalResult,
+  selectedPeriod: string,
+): TechnicalData {
+  const legacy = result.data
+  const indicators = result.indicators
+
+  return {
+    symbol: legacy?.symbol ?? result.symbol ?? '',
+    period: legacy?.period ?? selectedPeriod,
+    ohlcv: legacy?.ohlcv ?? result.ohlcv ?? [],
+    lastClose: legacy?.lastClose ?? indicators?.close ?? null,
+    sma20: legacy?.sma20 ?? indicators?.SMA20 ?? null,
+    sma50: legacy?.sma50 ?? indicators?.SMA50 ?? null,
+    rsi: legacy?.rsi ?? indicators?.RSI ?? null,
+    ['52WeekLow']: legacy?.['52WeekLow'] ?? indicators?.['52WeekLow'] ?? null,
+    ['52WeekHigh']:
+      legacy?.['52WeekHigh'] ?? indicators?.['52WeekHigh'] ?? null,
+  }
+}
+
+function describeTechnicalSignal(result: TechnicalResult): string {
+  const parts: string[] = []
+  if (result.trend) {
+    parts.push(`Trend: ${result.trend}.`)
+  }
+  if (result.signal) {
+    parts.push(`Signal: ${result.signal}.`)
+  }
+  if (result.reasons && result.reasons.length > 0) {
+    parts.push(`Drivers: ${result.reasons.slice(0, 3).join(', ')}.`)
+  }
+  return parts.join(' ')
 }
 
 function describeTrend(data: TechnicalData): string {

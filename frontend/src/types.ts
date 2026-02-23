@@ -57,7 +57,7 @@ export interface TechnicalData {
   symbol: string
   period: string
   ohlcv: OhlcvPoint[]
-  lastClose: number
+  lastClose: number | null
   sma20: number | null
   sma50: number | null
   rsi: number | null
@@ -65,9 +65,38 @@ export interface TechnicalData {
   ['52WeekHigh']: number | null
 }
 
+export interface TechnicalIndicators {
+  close?: number
+  RSI?: number
+  MACD?: number
+  MACD_signal?: number
+  ADX?: number
+  ATR?: number
+  SMA20?: number
+  SMA50?: number
+  SMA200?: number
+  ['52WeekLow']?: number
+  ['52WeekHigh']?: number
+}
+
+export interface TechnicalStructure {
+  support?: number[]
+  resistance?: number[]
+  breakout?: string | null
+  volumeSpike?: boolean
+  fibonacciLevels?: Record<string, number>
+}
+
 export interface TechnicalResult {
-  data: TechnicalData
   score: number
+  data?: TechnicalData
+  symbol?: string
+  trend?: string
+  signal?: string
+  reasons?: string[]
+  indicators?: TechnicalIndicators
+  structure?: TechnicalStructure
+  ohlcv?: OhlcvPoint[]
 }
 
 export interface SentimentHeadline {
