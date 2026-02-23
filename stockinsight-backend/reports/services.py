@@ -9,6 +9,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,9 @@ def generate_report_bundle(
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_budget=0)
+            ),
         )
         raw_text = (getattr(response, "text", "") or "").strip()
         parsed = _parse_json_object(raw_text)
