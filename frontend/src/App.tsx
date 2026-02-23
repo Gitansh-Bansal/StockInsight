@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import type { ReactElement } from 'react'
 import './App.css'
 import { fetchAnalysis } from './api'
 import type {
@@ -20,13 +21,19 @@ const PERIOD_OPTIONS = [
   { label: '5Y', value: '5y' },
 ]
 
-type AnalysisTab = 'overview' | 'fundamental' | 'technical' | 'sentiment'
+type AnalysisTab =
+  | 'overview'
+  | 'fundamental'
+  | 'technical'
+  | 'sentiment'
+  | 'full-report'
 
 const ANALYSIS_TABS: Array<{ key: AnalysisTab; label: string }> = [
   { key: 'overview', label: 'Overall' },
   { key: 'fundamental', label: 'Fundamental' },
   { key: 'technical', label: 'Technical' },
   { key: 'sentiment', label: 'Sentiment' },
+  { key: 'full-report', label: 'FULL REPORT' },
 ]
 
 type AppRoute =
@@ -544,6 +551,251 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
   )
 }
 
+function FullReportSection({ analysis }: { analysis: AnalysisResponse }) {
+  const reportText = analysis.report?.trim() ?? ''
+  const source = analysis.reportSource?.trim() ?? 'unknown'
+
+  if (!reportText) {
+    return (
+      <UnavailablePanel title="FULL REPORT">
+        Full report text is not available for this request.
+      </UnavailablePanel>
+    )
+  }
+
+  return (
+    <article className="panel reveal">
+      <header className="panel-head">
+        <h2>FULL REPORT</h2>
+        <span className="score-tag">{source.toUpperCase()}</span>
+      </header>
+      <div className="full-report-markdown">
+        <MarkdownContent text={reportText} />
+      </div>
+    </article>
+  )
+}
+
+function MarkdownContent({ text }: { text: string }) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const blocks: ReactElement[] = []
+  let i = 0
+  let key = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    if (!line.trim()) {
+      i += 1
+      continue
+    }
+
+    if (line.startsWith('```')) {
+      const language = line.slice(3).trim()
+      i += 1
+      const codeLines: string[] = []
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        codeLines.push(lines[i])
+        i += 1
+      }
+      if (i < lines.length && lines[i].startsWith('```')) {
+        i += 1
+      }
+      blocks.push(
+        <pre key={`md-${key++}`}>
+          <code className={language ? `language-${language}` : undefined}>
+            {codeLines.join('\n')}
+          </code>
+        </pre>,
+      )
+      continue
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
+    if (headingMatch) {
+      const level = headingMatch[1].length
+      const content = renderMarkdownInline(headingMatch[2], `md-${key}-h`)
+      const headingKey = `md-${key++}`
+      if (level === 1) {
+        blocks.push(<h1 key={headingKey}>{content}</h1>)
+      } else if (level === 2) {
+        blocks.push(<h2 key={headingKey}>{content}</h2>)
+      } else if (level === 3) {
+        blocks.push(<h3 key={headingKey}>{content}</h3>)
+      } else if (level === 4) {
+        blocks.push(<h4 key={headingKey}>{content}</h4>)
+      } else if (level === 5) {
+        blocks.push(<h5 key={headingKey}>{content}</h5>)
+      } else {
+        blocks.push(<h6 key={headingKey}>{content}</h6>)
+      }
+      i += 1
+      continue
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quoteLines: string[] = []
+      while (i < lines.length && /^>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^>\s?/, ''))
+        i += 1
+      }
+      blocks.push(
+        <blockquote key={`md-${key++}`}>
+          <MarkdownParagraphs lines={quoteLines} blockKeyPrefix={`md-${key}-q`} />
+        </blockquote>,
+      )
+      continue
+    }
+
+    if (/^[-*+]\s+/.test(line)) {
+      const items: ReactElement[] = []
+      while (i < lines.length && /^[-*+]\s+/.test(lines[i])) {
+        const item = lines[i].replace(/^[-*+]\s+/, '')
+        items.push(
+          <li key={`md-${key}-ul-${items.length}`}>
+            {renderMarkdownInline(item, `md-${key}-ul-inline-${items.length}`)}
+          </li>,
+        )
+        i += 1
+      }
+      blocks.push(<ul key={`md-${key++}`}>{items}</ul>)
+      continue
+    }
+
+    if (/^\d+\.\s+/.test(line)) {
+      const items: ReactElement[] = []
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+        const item = lines[i].replace(/^\d+\.\s+/, '')
+        items.push(
+          <li key={`md-${key}-ol-${items.length}`}>
+            {renderMarkdownInline(item, `md-${key}-ol-inline-${items.length}`)}
+          </li>,
+        )
+        i += 1
+      }
+      blocks.push(<ol key={`md-${key++}`}>{items}</ol>)
+      continue
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
+      blocks.push(<hr key={`md-${key++}`} />)
+      i += 1
+      continue
+    }
+
+    const paragraphLines: string[] = []
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !lines[i].startsWith('```') &&
+      !/^(#{1,6})\s+/.test(lines[i]) &&
+      !/^>\s?/.test(lines[i]) &&
+      !/^[-*+]\s+/.test(lines[i]) &&
+      !/^\d+\.\s+/.test(lines[i]) &&
+      !/^(-{3,}|\*{3,}|_{3,})$/.test(lines[i].trim())
+    ) {
+      paragraphLines.push(lines[i])
+      i += 1
+    }
+    blocks.push(
+      <p key={`md-${key++}`}>
+        {renderMarkdownInline(paragraphLines.join(' '), `md-${key}-p`)}
+      </p>,
+    )
+  }
+
+  return <>{blocks}</>
+}
+
+function MarkdownParagraphs({
+  lines,
+  blockKeyPrefix,
+}: {
+  lines: string[]
+  blockKeyPrefix: string
+}) {
+  const parts = lines.join('\n').split(/\n\s*\n/g).filter((item) => item.trim())
+  return (
+    <>
+      {parts.map((part, index) => (
+        <p key={`${blockKeyPrefix}-${index}`}>
+          {renderMarkdownInline(part.replace(/\n/g, ' '), `${blockKeyPrefix}-inline-${index}`)}
+        </p>
+      ))}
+    </>
+  )
+}
+
+function renderMarkdownInline(text: string, keyPrefix: string) {
+  const pattern =
+    /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\[[^\]]+\]\((https?:\/\/[^\s)]+)\))/g
+  const nodes: Array<string | ReactElement> = []
+  let lastIndex = 0
+  let match = pattern.exec(text)
+  let tokenIndex = 0
+
+  while (match) {
+    const [token] = match
+    const index = match.index
+    if (index > lastIndex) {
+      nodes.push(text.slice(lastIndex, index))
+    }
+
+    if (token.startsWith('`') && token.endsWith('`')) {
+      nodes.push(
+        <code key={`${keyPrefix}-code-${tokenIndex++}`}>
+          {token.slice(1, token.length - 1)}
+        </code>,
+      )
+    } else if (
+      (token.startsWith('**') && token.endsWith('**')) ||
+      (token.startsWith('__') && token.endsWith('__'))
+    ) {
+      nodes.push(
+        <strong key={`${keyPrefix}-strong-${tokenIndex++}`}>
+          {token.slice(2, token.length - 2)}
+        </strong>,
+      )
+    } else if (
+      (token.startsWith('*') && token.endsWith('*')) ||
+      (token.startsWith('_') && token.endsWith('_'))
+    ) {
+      nodes.push(
+        <em key={`${keyPrefix}-em-${tokenIndex++}`}>
+          {token.slice(1, token.length - 1)}
+        </em>,
+      )
+    } else if (token.startsWith('[')) {
+      const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
+      if (linkMatch) {
+        nodes.push(
+          <a
+            key={`${keyPrefix}-link-${tokenIndex++}`}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {linkMatch[1]}
+          </a>,
+        )
+      } else {
+        nodes.push(token)
+      }
+    } else {
+      nodes.push(token)
+    }
+
+    lastIndex = index + token.length
+    match = pattern.exec(text)
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex))
+  }
+
+  return nodes
+}
+
 function renderSection(
   tab: AnalysisTab,
   analysis: AnalysisResponse,
@@ -574,6 +826,8 @@ function renderSection(
           llmSummary={llmSections.sentiment}
         />
       )
+    case 'full-report':
+      return <FullReportSection analysis={analysis} />
     case 'overview':
     default:
       return (
@@ -721,7 +975,12 @@ function normalizePeriod(value: string): string {
 
 function normalizeTab(value: string): AnalysisTab {
   const raw = value.trim().toLowerCase()
-  if (raw === 'fundamental' || raw === 'technical' || raw === 'sentiment') {
+  if (
+    raw === 'fundamental' ||
+    raw === 'technical' ||
+    raw === 'sentiment' ||
+    raw === 'full-report'
+  ) {
     return raw
   }
   return 'overview'
