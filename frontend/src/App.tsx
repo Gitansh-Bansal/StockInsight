@@ -508,7 +508,7 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
     )
   }
 
-  const headlines: SentimentHeadline[] = result.headlines.slice(0, 12)
+  const headlines: SentimentHeadline[] = result.headlines
   const summary = llmSummary?.trim() || summarizeScore(result.score, 'sentiment')
 
   return (
@@ -540,7 +540,9 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
                 <p>{headline.title}</p>
               )}
               <span>
-                {safeText(headline.source)} | {headline.sentiment.toUpperCase()} |{' '}
+                {formatHeadlineTimestamp(resolveHeadlineTimestamp(headline))} | API:{' '}
+                {safeText(headline.apiSource)} | {safeText(headline.source)} |{' '}
+                {headline.sentiment.toUpperCase()} |{' '}
                 {headline.sentimentScore.toFixed(3)}
               </span>
             </div>
@@ -1119,6 +1121,51 @@ function safeText(value: string | null | undefined): string {
   }
   return value
 }
+
+function formatHeadlineTimestamp(value: string | undefined): string {
+  if (!value) {
+    return 'Unknown time'
+  }
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+  return parsed.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZoneName: 'short',
+  })
+}
+
+function resolveHeadlineTimestamp(headline: SentimentHeadline): string | undefined {
+  if (headline.publishedAt) {
+    return headline.publishedAt
+  }
+  if (headline.published_at) {
+    return headline.published_at
+  }
+  if (headline.pubDate) {
+    return headline.pubDate
+  }
+  if (headline.dateTimePub) {
+    return headline.dateTimePub
+  }
+  if (headline.dateTime) {
+    return headline.dateTime
+  }
+  if (headline.date && headline.time) {
+    return `${headline.date}T${headline.time}Z`
+  }
+  if (headline.date) {
+    return headline.date
+  }
+  return undefined
+}
+
 
 function summarizeScore(
   score: number,

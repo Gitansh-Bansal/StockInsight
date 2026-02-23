@@ -103,6 +103,14 @@ export interface SentimentHeadline {
   title: string
   link: string
   source: string
+  apiSource?: string
+  publishedAt?: string
+  published_at?: string
+  pubDate?: string
+  dateTimePub?: string
+  dateTime?: string
+  date?: string
+  time?: string
   sentiment: string
   sentimentScore: number
 }

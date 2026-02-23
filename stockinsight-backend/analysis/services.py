@@ -128,13 +128,20 @@ def run_full_analysis(
 
     sentiment_started_at = datetime.now(UTC)
     sentiment_started_perf = time.perf_counter()
+    company_name = None
+    if fundamental_result:
+        fundamental_data = fundamental_result.get("data") or {}
+        company_name = (
+            fundamental_data.get("shortName")
+            or fundamental_data.get("longName")
+        )
     _timing_log(
         timing_logs_enabled,
         "PROCESS_START sentiment ticker=%s started_at=%s",
         ticker,
         sentiment_started_at.isoformat(),
     )
-    sentiment_result = get_sentiment_analysis(ticker)
+    sentiment_result = get_sentiment_analysis(ticker, stock_name=company_name)
     _timing_log(
         timing_logs_enabled,
         "PROCESS_END sentiment ticker=%s ended_at=%s duration_s=%.3f",
