@@ -185,6 +185,7 @@ def _build_structured_prompt(
     fundamental_data = (fundamental_result or {}).get("data") or {}
     technical_data = _extract_technical_prompt_data(technical_result)
     sentiment_data = (sentiment_result or {}).get("data") or {}
+    headlines = (sentiment_result or {}).get("headlines") or {}
 
     payload = {
         "ticker": ticker.upper(),
@@ -260,6 +261,7 @@ def _build_structured_prompt(
         },
         "sentimentData": {
             "headlineCount": sentiment_data.get("count"),
+            "headlines": headlines,
         },
     }
 
