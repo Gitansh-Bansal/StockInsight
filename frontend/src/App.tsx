@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import type { ReactElement } from 'react'
 import './App.css'
 import { fetchAnalysis } from './api'
 import type {
@@ -8,6 +9,7 @@ import type {
   ReportSections,
   SentimentHeadline,
   TechnicalData,
+  TechnicalResult,
 } from './types'
 
 const PERIOD_OPTIONS = [
@@ -19,13 +21,19 @@ const PERIOD_OPTIONS = [
   { label: '5Y', value: '5y' },
 ]
 
-type AnalysisTab = 'overview' | 'fundamental' | 'technical' | 'sentiment'
+type AnalysisTab =
+  | 'overview'
+  | 'fundamental'
+  | 'technical'
+  | 'sentiment'
+  | 'full-report'
 
 const ANALYSIS_TABS: Array<{ key: AnalysisTab; label: string }> = [
   { key: 'overview', label: 'Overall' },
   { key: 'fundamental', label: 'Fundamental' },
   { key: 'technical', label: 'Technical' },
   { key: 'sentiment', label: 'Sentiment' },
+  { key: 'full-report', label: 'FULL REPORT' },
 ]
 
 type AppRoute =
@@ -326,7 +334,7 @@ function AnalysisPage({ ticker, initialPeriod, tab, onTabChange }: AnalysisPageP
         </div>
       )}
 
-      {!isLoading && !error && analysis && renderSection(tab, analysis)}
+      {!isLoading && !error && analysis && renderSection(tab, analysis, period)}
     </section>
   )
 }
@@ -423,10 +431,15 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
 
 type TechnicalSectionProps = {
   result: AnalysisResponse['technical']
+  selectedPeriod: string
   llmSummary?: string
 }
 
-function TechnicalSection({ result, llmSummary }: TechnicalSectionProps) {
+function TechnicalSection({
+  result,
+  selectedPeriod,
+  llmSummary,
+}: TechnicalSectionProps) {
   if (!result) {
     return (
       <UnavailablePanel title="Technical Analysis">
@@ -435,10 +448,11 @@ function TechnicalSection({ result, llmSummary }: TechnicalSectionProps) {
     )
   }
 
-  const data: TechnicalData = result.data
-  const trendText = llmSummary?.trim() || describeTrend(data)
+  const data = resolveTechnicalData(result, selectedPeriod)
+  const trendText =
+    llmSummary?.trim() || describeTechnicalSignal(result) || describeTrend(data)
   const tradingViewSymbol = toTradingViewSymbol(data.symbol)
-  const tradingViewInterval = tradingViewIntervalFromPeriod(data.period)
+  const tradingViewInterval = tradingViewIntervalFromPeriod(selectedPeriod)
   const tradingViewUrl = buildTradingViewChartUrl(
     tradingViewSymbol,
     tradingViewInterval,
@@ -464,12 +478,14 @@ function TechnicalSection({ result, llmSummary }: TechnicalSectionProps) {
           <h3>Data used</h3>
           <MetricList
             rows={[
+              ['Trend', safeText(result.trend)],
+              ['Signal', safeText(result.signal)],
               ['Last close', formatCurrency(data.lastClose, 'USD')],
               ['SMA20', formatCurrency(data.sma20, 'USD')],
               ['SMA50', formatCurrency(data.sma50, 'USD')],
               ['RSI (14)', formatNumber(data.rsi)],
               ['52W range', rangeValue(data['52WeekLow'], data['52WeekHigh'], 'USD')],
-              ['Selected period', data.period],
+              ['Selected period', selectedPeriod],
             ]}
           />
         </aside>
@@ -492,7 +508,7 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
     )
   }
 
-  const headlines: SentimentHeadline[] = result.headlines.slice(0, 12)
+  const headlines: SentimentHeadline[] = result.headlines
   const summary = llmSummary?.trim() || summarizeScore(result.score, 'sentiment')
 
   return (
@@ -524,7 +540,9 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
                 <p>{headline.title}</p>
               )}
               <span>
-                {safeText(headline.source)} | {headline.sentiment.toUpperCase()} |{' '}
+                {formatHeadlineTimestamp(resolveHeadlineTimestamp(headline))} | API:{' '}
+                {safeText(headline.apiSource)} | {safeText(headline.source)} |{' '}
+                {headline.sentiment.toUpperCase()} |{' '}
                 {headline.sentimentScore.toFixed(3)}
               </span>
             </div>
@@ -535,7 +553,256 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
   )
 }
 
-function renderSection(tab: AnalysisTab, analysis: AnalysisResponse) {
+function FullReportSection({ analysis }: { analysis: AnalysisResponse }) {
+  const reportText = analysis.report?.trim() ?? ''
+  const source = analysis.reportSource?.trim() ?? 'unknown'
+
+  if (!reportText) {
+    return (
+      <UnavailablePanel title="FULL REPORT">
+        Full report text is not available for this request.
+      </UnavailablePanel>
+    )
+  }
+
+  return (
+    <article className="panel reveal">
+      <header className="panel-head">
+        <h2>FULL REPORT</h2>
+        <span className="score-tag">{source.toUpperCase()}</span>
+      </header>
+      <div className="full-report-markdown">
+        <MarkdownContent text={reportText} />
+      </div>
+    </article>
+  )
+}
+
+function MarkdownContent({ text }: { text: string }) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const blocks: ReactElement[] = []
+  let i = 0
+  let key = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    if (!line.trim()) {
+      i += 1
+      continue
+    }
+
+    if (line.startsWith('```')) {
+      const language = line.slice(3).trim()
+      i += 1
+      const codeLines: string[] = []
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        codeLines.push(lines[i])
+        i += 1
+      }
+      if (i < lines.length && lines[i].startsWith('```')) {
+        i += 1
+      }
+      blocks.push(
+        <pre key={`md-${key++}`}>
+          <code className={language ? `language-${language}` : undefined}>
+            {codeLines.join('\n')}
+          </code>
+        </pre>,
+      )
+      continue
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
+    if (headingMatch) {
+      const level = headingMatch[1].length
+      const content = renderMarkdownInline(headingMatch[2], `md-${key}-h`)
+      const headingKey = `md-${key++}`
+      if (level === 1) {
+        blocks.push(<h1 key={headingKey}>{content}</h1>)
+      } else if (level === 2) {
+        blocks.push(<h2 key={headingKey}>{content}</h2>)
+      } else if (level === 3) {
+        blocks.push(<h3 key={headingKey}>{content}</h3>)
+      } else if (level === 4) {
+        blocks.push(<h4 key={headingKey}>{content}</h4>)
+      } else if (level === 5) {
+        blocks.push(<h5 key={headingKey}>{content}</h5>)
+      } else {
+        blocks.push(<h6 key={headingKey}>{content}</h6>)
+      }
+      i += 1
+      continue
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quoteLines: string[] = []
+      while (i < lines.length && /^>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^>\s?/, ''))
+        i += 1
+      }
+      blocks.push(
+        <blockquote key={`md-${key++}`}>
+          <MarkdownParagraphs lines={quoteLines} blockKeyPrefix={`md-${key}-q`} />
+        </blockquote>,
+      )
+      continue
+    }
+
+    if (/^[-*+]\s+/.test(line)) {
+      const items: ReactElement[] = []
+      while (i < lines.length && /^[-*+]\s+/.test(lines[i])) {
+        const item = lines[i].replace(/^[-*+]\s+/, '')
+        items.push(
+          <li key={`md-${key}-ul-${items.length}`}>
+            {renderMarkdownInline(item, `md-${key}-ul-inline-${items.length}`)}
+          </li>,
+        )
+        i += 1
+      }
+      blocks.push(<ul key={`md-${key++}`}>{items}</ul>)
+      continue
+    }
+
+    if (/^\d+\.\s+/.test(line)) {
+      const items: ReactElement[] = []
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+        const item = lines[i].replace(/^\d+\.\s+/, '')
+        items.push(
+          <li key={`md-${key}-ol-${items.length}`}>
+            {renderMarkdownInline(item, `md-${key}-ol-inline-${items.length}`)}
+          </li>,
+        )
+        i += 1
+      }
+      blocks.push(<ol key={`md-${key++}`}>{items}</ol>)
+      continue
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
+      blocks.push(<hr key={`md-${key++}`} />)
+      i += 1
+      continue
+    }
+
+    const paragraphLines: string[] = []
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !lines[i].startsWith('```') &&
+      !/^(#{1,6})\s+/.test(lines[i]) &&
+      !/^>\s?/.test(lines[i]) &&
+      !/^[-*+]\s+/.test(lines[i]) &&
+      !/^\d+\.\s+/.test(lines[i]) &&
+      !/^(-{3,}|\*{3,}|_{3,})$/.test(lines[i].trim())
+    ) {
+      paragraphLines.push(lines[i])
+      i += 1
+    }
+    blocks.push(
+      <p key={`md-${key++}`}>
+        {renderMarkdownInline(paragraphLines.join(' '), `md-${key}-p`)}
+      </p>,
+    )
+  }
+
+  return <>{blocks}</>
+}
+
+function MarkdownParagraphs({
+  lines,
+  blockKeyPrefix,
+}: {
+  lines: string[]
+  blockKeyPrefix: string
+}) {
+  const parts = lines.join('\n').split(/\n\s*\n/g).filter((item) => item.trim())
+  return (
+    <>
+      {parts.map((part, index) => (
+        <p key={`${blockKeyPrefix}-${index}`}>
+          {renderMarkdownInline(part.replace(/\n/g, ' '), `${blockKeyPrefix}-inline-${index}`)}
+        </p>
+      ))}
+    </>
+  )
+}
+
+function renderMarkdownInline(text: string, keyPrefix: string) {
+  const pattern =
+    /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\[[^\]]+\]\((https?:\/\/[^\s)]+)\))/g
+  const nodes: Array<string | ReactElement> = []
+  let lastIndex = 0
+  let match = pattern.exec(text)
+  let tokenIndex = 0
+
+  while (match) {
+    const [token] = match
+    const index = match.index
+    if (index > lastIndex) {
+      nodes.push(text.slice(lastIndex, index))
+    }
+
+    if (token.startsWith('`') && token.endsWith('`')) {
+      nodes.push(
+        <code key={`${keyPrefix}-code-${tokenIndex++}`}>
+          {token.slice(1, token.length - 1)}
+        </code>,
+      )
+    } else if (
+      (token.startsWith('**') && token.endsWith('**')) ||
+      (token.startsWith('__') && token.endsWith('__'))
+    ) {
+      nodes.push(
+        <strong key={`${keyPrefix}-strong-${tokenIndex++}`}>
+          {token.slice(2, token.length - 2)}
+        </strong>,
+      )
+    } else if (
+      (token.startsWith('*') && token.endsWith('*')) ||
+      (token.startsWith('_') && token.endsWith('_'))
+    ) {
+      nodes.push(
+        <em key={`${keyPrefix}-em-${tokenIndex++}`}>
+          {token.slice(1, token.length - 1)}
+        </em>,
+      )
+    } else if (token.startsWith('[')) {
+      const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
+      if (linkMatch) {
+        nodes.push(
+          <a
+            key={`${keyPrefix}-link-${tokenIndex++}`}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {linkMatch[1]}
+          </a>,
+        )
+      } else {
+        nodes.push(token)
+      }
+    } else {
+      nodes.push(token)
+    }
+
+    lastIndex = index + token.length
+    match = pattern.exec(text)
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex))
+  }
+
+  return nodes
+}
+
+function renderSection(
+  tab: AnalysisTab,
+  analysis: AnalysisResponse,
+  selectedPeriod: string,
+) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
 
   switch (tab) {
@@ -550,6 +817,7 @@ function renderSection(tab: AnalysisTab, analysis: AnalysisResponse) {
       return (
         <TechnicalSection
           result={analysis.technical}
+          selectedPeriod={selectedPeriod}
           llmSummary={llmSections.technical}
         />
       )
@@ -560,6 +828,8 @@ function renderSection(tab: AnalysisTab, analysis: AnalysisResponse) {
           llmSummary={llmSections.sentiment}
         />
       )
+    case 'full-report':
+      return <FullReportSection analysis={analysis} />
     case 'overview':
     default:
       return (
@@ -707,7 +977,12 @@ function normalizePeriod(value: string): string {
 
 function normalizeTab(value: string): AnalysisTab {
   const raw = value.trim().toLowerCase()
-  if (raw === 'fundamental' || raw === 'technical' || raw === 'sentiment') {
+  if (
+    raw === 'fundamental' ||
+    raw === 'technical' ||
+    raw === 'sentiment' ||
+    raw === 'full-report'
+  ) {
     return raw
   }
   return 'overview'
@@ -847,6 +1122,51 @@ function safeText(value: string | null | undefined): string {
   return value
 }
 
+function formatHeadlineTimestamp(value: string | undefined): string {
+  if (!value) {
+    return 'Unknown time'
+  }
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+  return parsed.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZoneName: 'short',
+  })
+}
+
+function resolveHeadlineTimestamp(headline: SentimentHeadline): string | undefined {
+  if (headline.publishedAt) {
+    return headline.publishedAt
+  }
+  if (headline.published_at) {
+    return headline.published_at
+  }
+  if (headline.pubDate) {
+    return headline.pubDate
+  }
+  if (headline.dateTimePub) {
+    return headline.dateTimePub
+  }
+  if (headline.dateTime) {
+    return headline.dateTime
+  }
+  if (headline.date && headline.time) {
+    return `${headline.date}T${headline.time}Z`
+  }
+  if (headline.date) {
+    return headline.date
+  }
+  return undefined
+}
+
+
 function summarizeScore(
   score: number,
   mode: 'fundamental' | 'sentiment',
@@ -868,6 +1188,41 @@ function summarizeScore(
     return 'News tone is balanced overall, without a dominant positive or negative signal.'
   }
   return 'Recent news flow is skewed negative and may weigh on near-term sentiment.'
+}
+
+function resolveTechnicalData(
+  result: TechnicalResult,
+  selectedPeriod: string,
+): TechnicalData {
+  const legacy = result.data
+  const indicators = result.indicators
+
+  return {
+    symbol: legacy?.symbol ?? result.symbol ?? '',
+    period: legacy?.period ?? selectedPeriod,
+    ohlcv: legacy?.ohlcv ?? result.ohlcv ?? [],
+    lastClose: legacy?.lastClose ?? indicators?.close ?? null,
+    sma20: legacy?.sma20 ?? indicators?.SMA20 ?? null,
+    sma50: legacy?.sma50 ?? indicators?.SMA50 ?? null,
+    rsi: legacy?.rsi ?? indicators?.RSI ?? null,
+    ['52WeekLow']: legacy?.['52WeekLow'] ?? indicators?.['52WeekLow'] ?? null,
+    ['52WeekHigh']:
+      legacy?.['52WeekHigh'] ?? indicators?.['52WeekHigh'] ?? null,
+  }
+}
+
+function describeTechnicalSignal(result: TechnicalResult): string {
+  const parts: string[] = []
+  if (result.trend) {
+    parts.push(`Trend: ${result.trend}.`)
+  }
+  if (result.signal) {
+    parts.push(`Signal: ${result.signal}.`)
+  }
+  if (result.reasons && result.reasons.length > 0) {
+    parts.push(`Drivers: ${result.reasons.slice(0, 3).join(', ')}.`)
+  }
+  return parts.join(' ')
 }
 
 function describeTrend(data: TechnicalData): string {

@@ -3,7 +3,11 @@ Orchestration: run fundamental, technical, and sentiment analysis; compute overa
 and verdict; generate comprehensive report. Single entry point for "analyze ticker".
 """
 import logging
+import time
+from datetime import datetime, UTC
 from typing import Any
+
+from django.conf import settings
 
 from fundamental.services import get_fundamental_analysis
 from technical.services import get_technical_analysis
@@ -16,6 +20,11 @@ logger = logging.getLogger(__name__)
 WEIGHT_FUNDAMENTAL = 0.35
 WEIGHT_TECHNICAL = 0.35
 WEIGHT_SENTIMENT = 0.30
+
+
+def _timing_log(enabled: bool, message: str, *args: Any) -> None:
+    if enabled:
+        logger.info(message, *args)
 
 
 def _compute_overall_score(
@@ -69,9 +78,77 @@ def run_full_analysis(
     Returns one combined payload for the frontend, or None if ticker is invalid.
     """
     ticker = ticker.upper().strip()
+    timing_logs_enabled = bool(getattr(settings, "ENABLE_TIMING_LOGS", True))
+
+    analysis_started_at = datetime.now(UTC)
+    analysis_started_perf = time.perf_counter()
+    _timing_log(
+        timing_logs_enabled,
+        "PROCESS_START full_analysis ticker=%s period=%s started_at=%s",
+        ticker,
+        period,
+        analysis_started_at.isoformat(),
+    )
+
+    fundamental_started_at = datetime.now(UTC)
+    fundamental_started_perf = time.perf_counter()
+    _timing_log(
+        timing_logs_enabled,
+        "PROCESS_START fundamental ticker=%s started_at=%s",
+        ticker,
+        fundamental_started_at.isoformat(),
+    )
     fundamental_result = get_fundamental_analysis(ticker)
+    _timing_log(
+        timing_logs_enabled,
+        "PROCESS_END fundamental ticker=%s ended_at=%s duration_s=%.3f",
+        ticker,
+        datetime.now(UTC).isoformat(),
+        time.perf_counter() - fundamental_started_perf,
+    )
+
+    technical_started_at = datetime.now(UTC)
+    technical_started_perf = time.perf_counter()
+    _timing_log(
+        timing_logs_enabled,
+        "PROCESS_START technical ticker=%s period=%s started_at=%s",
+        ticker,
+        period,
+        technical_started_at.isoformat(),
+    )
     technical_result = get_technical_analysis(ticker, period=period)
-    sentiment_result = get_sentiment_analysis(ticker)
+    _timing_log(
+        timing_logs_enabled,
+        "PROCESS_END technical ticker=%s period=%s ended_at=%s duration_s=%.3f",
+        ticker,
+        period,
+        datetime.now(UTC).isoformat(),
+        time.perf_counter() - technical_started_perf,
+    )
+
+    sentiment_started_at = datetime.now(UTC)
+    sentiment_started_perf = time.perf_counter()
+    company_name = None
+    if fundamental_result:
+        fundamental_data = fundamental_result.get("data") or {}
+        company_name = (
+            fundamental_data.get("shortName")
+            or fundamental_data.get("longName")
+        )
+    _timing_log(
+        timing_logs_enabled,
+        "PROCESS_START sentiment ticker=%s started_at=%s",
+        ticker,
+        sentiment_started_at.isoformat(),
+    )
+    sentiment_result = get_sentiment_analysis(ticker, stock_name=company_name)
+    _timing_log(
+        timing_logs_enabled,
+        "PROCESS_END sentiment ticker=%s ended_at=%s duration_s=%.3f",
+        ticker,
+        datetime.now(UTC).isoformat(),
+        time.perf_counter() - sentiment_started_perf,
+    )
 
     # If we have no data at all, treat as invalid ticker
     if fundamental_result is None and technical_result is None:
@@ -92,6 +169,14 @@ def run_full_analysis(
         "sections": {},
     }
     if include_report:
+        report_started_at = datetime.now(UTC)
+        report_started_perf = time.perf_counter()
+        _timing_log(
+            timing_logs_enabled,
+            "PROCESS_START report_generation ticker=%s started_at=%s",
+            ticker,
+            report_started_at.isoformat(),
+        )
         report_bundle = generate_report_bundle(
             ticker=ticker,
             fundamental_result=fundamental_result,
@@ -100,6 +185,21 @@ def run_full_analysis(
             overall_score=overall_score,
             verdict=verdict,
         )
+        _timing_log(
+            timing_logs_enabled,
+            "PROCESS_END report_generation ticker=%s ended_at=%s duration_s=%.3f",
+            ticker,
+            datetime.now(UTC).isoformat(),
+            time.perf_counter() - report_started_perf,
+        )
+
+    _timing_log(
+        timing_logs_enabled,
+        "PROCESS_END full_analysis ticker=%s ended_at=%s duration_s=%.3f",
+        ticker,
+        datetime.now(UTC).isoformat(),
+        time.perf_counter() - analysis_started_perf,
+    )
 
     return {
         "ticker": ticker,

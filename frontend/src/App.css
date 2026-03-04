@@ -170,11 +170,14 @@
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: 0.9rem;
-  padding: 0.75rem 6.2rem 0.75rem 0.9rem;
   background: color-mix(in hsl, var(--card) 70%, white 30%);
   color: var(--ink);
   font-size: 0.95rem;
   font-family: inherit;
+}
+
+.search-field input {
+  padding: 0.75rem 6.2rem 0.75rem 0.9rem;
 }
 
 .search-field select {
@@ -253,6 +256,7 @@
 
 .period-control select {
   appearance: none;
+  padding: 0.75rem 1.8rem 0.75rem 0.9rem;
 }
 
 .section-grid {
@@ -290,6 +294,75 @@
   margin: 0;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.full-report-markdown {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.full-report-markdown p,
+.full-report-markdown ul,
+.full-report-markdown ol,
+.full-report-markdown blockquote,
+.full-report-markdown pre {
+  margin: 0;
+}
+
+.full-report-markdown h1,
+.full-report-markdown h2,
+.full-report-markdown h3,
+.full-report-markdown h4,
+.full-report-markdown h5,
+.full-report-markdown h6 {
+  margin: 0.25rem 0 0;
+  line-height: 1.3;
+}
+
+.full-report-markdown ul,
+.full-report-markdown ol {
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.full-report-markdown li {
+  line-height: 1.5;
+}
+
+.full-report-markdown blockquote {
+  border-left: 3px solid var(--line-strong);
+  padding-left: 0.85rem;
+  color: var(--muted);
+}
+
+.full-report-markdown pre {
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 0.8rem;
+  background: color-mix(in hsl, var(--card) 70%, white 30%);
+  overflow-x: auto;
+}
+
+.full-report-markdown code {
+  font-family: var(--mono-font);
+  font-size: 0.85rem;
+}
+
+.full-report-markdown :not(pre) > code {
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.35rem;
+  background: color-mix(in hsl, var(--card) 68%, white 32%);
+}
+
+.full-report-markdown a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.full-report-markdown a:hover {
+  text-decoration: underline;
 }
 
 .verdict,
@@ -562,3 +635,4 @@ th {
     height: 304px;
   }
 }
+
