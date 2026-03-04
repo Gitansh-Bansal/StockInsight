@@ -224,32 +224,6 @@ def _build_structured_prompt(
         "- Be concise and neutral.\n"
 
 
-        # "You are a professional equity analyst.\n"
-        # "Given the JSON input, generate a sectioned stock analysis.\n"
-        # "Critical requirement: explain WHY each score is what it is using the "
-        # "provided metrics and scoring rules, not score-band storytelling.\n"
-        # "Do not infer quality only from the numeric score; tie every conclusion "
-        # "to explicit inputs (for example: P/E, margins, RSI, SMA relation, "
-        # "headline count, etc.).\n"
-        # "If a metric is missing, do not use it.\n"
-        # "Return ONLY valid JSON and nothing else.\n"
-        # "JSON schema:\n"
-        # "{\n"
-        # '  "overall": "3-5 sentences: include component scores, weights, and why weighted result supports verdict",\n'
-        # '  "fundamental": "3-5 sentences: explain score drivers from valuation/profitability/health/growth metrics",\n'
-        # '  "technical": "3-5 sentences: explain score from SMA/RSI/52-week-rule effects",\n'
-        # '  "sentiment": "3-5 sentences: explain score from FinBERT headline signal and count",\n'
-        # '  "riskFactors": "2-4 sentences",\n'
-        # '  "conclusion": "2-4 sentences",\n'
-        # '  "disclaimer": "1 sentence",\n'
-        # '  "fullReportMarkdown": "full markdown report with matching sections"\n'
-        # "}\n"
-        # "Style rules:\n"
-        # "- Be concise and neutral.\n"
-        # "- Quote concrete metric values when available.\n"
-        # "- Avoid generic phrases like 'high score indicates strength' unless you "
-        # "also provide causal metric evidence.\n"
-        # "- Do not invent unavailable metrics.\n"
         f"Input JSON:\n{json.dumps(payload, ensure_ascii=True)}"
     )
 
