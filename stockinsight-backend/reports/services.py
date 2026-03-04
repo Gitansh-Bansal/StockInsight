@@ -74,7 +74,7 @@ def generate_report_bundle(
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-flash-lite",
             contents=prompt,
         )
         raw_text = (getattr(response, "text", "") or "").strip()
@@ -142,29 +142,29 @@ def _build_structured_prompt(
         "ticker": ticker.upper(),
         "overallScore": overall_score,
         "verdict": verdict,
-        "scoringSystem": {
-            "overallWeights": {
-                "fundamental": 0.35,
-                "technical": 0.35,
-                "sentiment": 0.30,
-            },
-            "technicalRules": {
-                "priceVsSma20": "close>sma20 +5 else -3",
-                "priceVsSma50": "close>sma50 +5 else -2",
-                "rsi": "40-60 +3, <30 +4, >70 -4",
-                "fiftyTwoWeekPosition": "30%-70% +2, >90% -2",
-                "baseScore": 50,
-            },
-            "sentimentRules": {
-                "model": "FinBERT",
-                "labels": {"positive": 1, "neutral": 0, "negative": -1},
-                "mapping": "weighted average in [-1,1], mapped to score = 50 + 50*avg",
-            },
-            "fundamentalRules": (
-                "Sector-aware composite score from valuation, profitability, "
-                "financial health, growth, and penalties."
-            ),
-        },
+        # "scoringSystem": {
+        #     "overallWeights": {
+        #         "fundamental": 0.35,
+        #         "technical": 0.35,
+        #         "sentiment": 0.30,
+        #     },
+        #     "technicalRules": {
+        #         "priceVsSma20": "close>sma20 +5 else -3",
+        #         "priceVsSma50": "close>sma50 +5 else -2",
+        #         "rsi": "40-60 +3, <30 +4, >70 -4",
+        #         "fiftyTwoWeekPosition": "30%-70% +2, >90% -2",
+        #         "baseScore": 50,
+        #     },
+        #     "sentimentRules": {
+        #         "model": "FinBERT",
+        #         "labels": {"positive": 1, "neutral": 0, "negative": -1},
+        #         "mapping": "weighted average in [-1,1], mapped to score = 50 + 50*avg",
+        #     },
+        #     "fundamentalRules": (
+        #         "Sector-aware composite score from valuation, profitability, "
+        #         "financial health, growth, and penalties."
+        #     ),
+        # },
         "fundamentalScore": (fundamental_result or {}).get("score"),
         "technicalScore": (technical_result or {}).get("score"),
         "sentimentScore": (sentiment_result or {}).get("score"),
@@ -202,32 +202,54 @@ def _build_structured_prompt(
     }
 
     return (
-        "You are a professional equity analyst.\n"
-        "Given the JSON input, generate a sectioned stock analysis.\n"
-        "Critical requirement: explain WHY each score is what it is using the "
-        "provided metrics and scoring rules, not score-band storytelling.\n"
-        "Do not infer quality only from the numeric score; tie every conclusion "
-        "to explicit inputs (for example: P/E, margins, RSI, SMA relation, "
-        "headline count, etc.).\n"
-        "If a metric is missing, do not use it.\n"
-        "Return ONLY valid JSON and nothing else.\n"
+        "Role: Senior Financial Analyst\n"
+        "Task: Create an equity research report in the given output format based on the analysis results given in JSON input.\n"
+
+        "The output should be produced in this output JSON format:\n"
         "JSON schema:\n"
         "{\n"
-        '  "overall": "3-5 sentences: include component scores, weights, and why weighted result supports verdict",\n'
-        '  "fundamental": "3-5 sentences: explain score drivers from valuation/profitability/health/growth metrics",\n'
-        '  "technical": "3-5 sentences: explain score from SMA/RSI/52-week-rule effects",\n'
-        '  "sentiment": "3-5 sentences: explain score from FinBERT headline signal and count",\n'
+        '  "overall": "5-7 sentences: include component scores, and explain the result using the fundamental, technical and news sentiment metrics' \
+        '",\n'
+        '  "fundamental": "5-7 sentences: mention the score and explain using the fundamental metrics",\n'
+        '  "technical": "5-7 sentences: mention the score and explain using the technical metrics",\n'
+        '  "sentiment": "5-7 sentences: mention the score and explain using the news headlines",\n'
         '  "riskFactors": "2-4 sentences",\n'
-        '  "conclusion": "2-4 sentences",\n'
+        '  "conclusion": "2-4 sentences: mention the final verdict and conclusion",\n'
         '  "disclaimer": "1 sentence",\n'
         '  "fullReportMarkdown": "full markdown report with matching sections"\n'
-        "}\n"
-        "Style rules:\n"
+        "}\n\n"
+
+        "Note:\n"
+        "- Keep the tone professional.\n"
         "- Be concise and neutral.\n"
-        "- Quote concrete metric values when available.\n"
-        "- Avoid generic phrases like 'high score indicates strength' unless you "
-        "also provide causal metric evidence.\n"
-        "- Do not invent unavailable metrics.\n"
+
+
+        # "You are a professional equity analyst.\n"
+        # "Given the JSON input, generate a sectioned stock analysis.\n"
+        # "Critical requirement: explain WHY each score is what it is using the "
+        # "provided metrics and scoring rules, not score-band storytelling.\n"
+        # "Do not infer quality only from the numeric score; tie every conclusion "
+        # "to explicit inputs (for example: P/E, margins, RSI, SMA relation, "
+        # "headline count, etc.).\n"
+        # "If a metric is missing, do not use it.\n"
+        # "Return ONLY valid JSON and nothing else.\n"
+        # "JSON schema:\n"
+        # "{\n"
+        # '  "overall": "3-5 sentences: include component scores, weights, and why weighted result supports verdict",\n'
+        # '  "fundamental": "3-5 sentences: explain score drivers from valuation/profitability/health/growth metrics",\n'
+        # '  "technical": "3-5 sentences: explain score from SMA/RSI/52-week-rule effects",\n'
+        # '  "sentiment": "3-5 sentences: explain score from FinBERT headline signal and count",\n'
+        # '  "riskFactors": "2-4 sentences",\n'
+        # '  "conclusion": "2-4 sentences",\n'
+        # '  "disclaimer": "1 sentence",\n'
+        # '  "fullReportMarkdown": "full markdown report with matching sections"\n'
+        # "}\n"
+        # "Style rules:\n"
+        # "- Be concise and neutral.\n"
+        # "- Quote concrete metric values when available.\n"
+        # "- Avoid generic phrases like 'high score indicates strength' unless you "
+        # "also provide causal metric evidence.\n"
+        # "- Do not invent unavailable metrics.\n"
         f"Input JSON:\n{json.dumps(payload, ensure_ascii=True)}"
     )
 
