@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { ReactElement } from 'react'
 import './App.css'
@@ -452,11 +452,109 @@ function TechnicalSection({
   const trendText =
     llmSummary?.trim() || describeTechnicalSignal(result) || describeTrend(data)
   const tradingViewSymbol = toTradingViewSymbol(data.symbol)
-  const tradingViewInterval = tradingViewIntervalFromPeriod(selectedPeriod)
-  const tradingViewUrl = buildTradingViewChartUrl(
-    tradingViewSymbol,
-    tradingViewInterval,
-  )
+  const chartContainerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const container = chartContainerRef.current
+    if (!container) return
+
+    let chart: any | null = null
+    let resizeObserver: ResizeObserver | null = null
+
+    const initChart = async () => {
+      // Lazy-load lightweight-charts from a CDN the first time it is needed.
+      let lib = (window as any).LightweightCharts
+      if (!lib) {
+        const script = document.createElement('script')
+        script.src =
+          'https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js'
+        script.async = true
+
+        await new Promise<void>((resolve, reject) => {
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error('Failed to load chart library'))
+          document.head.appendChild(script)
+        })
+
+        lib = (window as any).LightweightCharts
+        if (!lib) {
+          return
+        }
+      }
+
+      const resize = () => {
+        if (!container || !chart) return
+        const { width, height } = container.getBoundingClientRect()
+        chart.applyOptions({ width, height })
+      }
+
+      chart = lib.createChart(container, {
+        layout: {
+          background: { color: 'white' },
+          textColor: '#111827',
+        },
+        rightPriceScale: {
+          visible: true,
+        },
+        timeScale: {
+          borderColor: '#e5e7eb',
+        },
+        grid: {
+          vertLines: { color: '#f3f4f6' },
+          horzLines: { color: '#f3f4f6' },
+        },
+        localization: {
+          locale: 'en-US',
+        },
+      })
+
+      const candleSeries = chart.addCandlestickSeries()
+
+      const ohlcv = data.ohlcv ?? []
+      const candles = ohlcv
+        .map((bar) => {
+          const t = bar.date
+          const dt = typeof t === 'string' ? new Date(t) : new Date(t * 1000)
+          if (Number.isNaN(dt.getTime())) {
+            return null
+          }
+          return {
+            time: (dt.getTime() / 1000) as any,
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+          }
+        })
+        .filter(Boolean) as Array<{
+        time: any
+        open: number
+        high: number
+        low: number
+        close: number
+      }>
+
+      candleSeries.setData(candles)
+      chart.timeScale().fitContent()
+
+      resize()
+      resizeObserver = new ResizeObserver(resize)
+      resizeObserver.observe(container)
+    }
+
+    initChart().catch(() => {
+      // Fail silently; layout still renders without the chart.
+    })
+
+    return () => {
+      if (resizeObserver && container) {
+        resizeObserver.unobserve(container)
+      }
+      if (chart) {
+        chart.remove()
+      }
+    }
+  }, [data.ohlcv, tradingViewSymbol, selectedPeriod])
 
   return (
     <article className="panel reveal">
@@ -466,14 +564,7 @@ function TechnicalSection({
       </header>
       <p className="analysis-copy">{trendText}</p>
       <div className="technical-layout">
-        <div className="tv-chart-wrap">
-          <iframe
-            title={`TradingView chart for ${tradingViewSymbol}`}
-            src={tradingViewUrl}
-            loading="lazy"
-            allowFullScreen
-          />
-        </div>
+        <div className="tv-chart-wrap" ref={chartContainerRef} />
         <aside className="technical-side">
           <h3>Data used</h3>
           <MetricList
@@ -1003,41 +1094,7 @@ function toTradingViewSymbol(symbol: string): string {
   return clean
 }
 
-function tradingViewIntervalFromPeriod(period: string): string {
-  if (period === '1mo') {
-    return '60'
-  }
-  if (period === '5y') {
-    return 'M'
-  }
-  if (period === '2y' || period === '1y') {
-    return 'W'
-  }
-  return 'D'
-}
-
-function buildTradingViewChartUrl(symbol: string, interval: string): string {
-  const params = new URLSearchParams({
-    symbol,
-    interval,
-    theme: 'light',
-    style: '1',
-    locale: 'en',
-    timezone: 'Etc/UTC',
-    withdateranges: '1',
-    hide_side_toolbar: '1',
-    hideideas: '1',
-    allow_symbol_change: '0',
-    saveimage: '1',
-    toolbarbg: 'f7f3eb',
-    studies: '[]',
-    details: '0',
-    hotlist: '0',
-    calendar: '0',
-    support_host: 'https://www.tradingview.com',
-  })
-  return `https://s.tradingview.com/widgetembed/?${params.toString()}`
-}
+// Legacy TradingView helpers removed now that charts use Lightweight Charts.
 
 function formatScore(score: number | null): string {
   if (typeof score !== 'number') {

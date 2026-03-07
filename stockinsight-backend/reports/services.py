@@ -75,7 +75,7 @@ def generate_report_bundle(
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 thinking_config=types.ThinkingConfig(thinking_budget=0)

@@ -265,6 +265,8 @@ def _fetch_from_finnhub(
     except Exception as e:
         logger.warning("Finnhub error for ticker %s: %s", ticker, e)
 
+    # print(headlines)
+
     return headlines
 
 
@@ -446,18 +448,16 @@ def get_sentiment_analysis(
             else (newsdata_headlines + newsapi_headlines + newsapi_ai_headlines)
         )
 
-        # Remove duplicates (exact title, canonical link, and near-duplicate title variants)
+
+        # Remove duplicates (exact/normalized title and near-duplicate title variants).
+        # We intentionally do NOT dedupe purely by link because some providers can
+        # return many distinct headlines that share the same landing-page URL.
         seen_titles = set()
-        seen_links = set()
         unique_headlines: list[dict[str, Any]] = []
         for h in raw_headlines:
             title = h.get("title") or ""
             key = _normalize_title_for_dedupe(title)
             if not key or key in seen_titles:
-                continue
-
-            canonical_link = _normalize_link_for_dedupe(h.get("link") or "")
-            if canonical_link and canonical_link in seen_links:
                 continue
 
             # Near-duplicate guard for provider variants:
@@ -487,14 +487,14 @@ def get_sentiment_analysis(
                 continue
 
             seen_titles.add(key)
-            if canonical_link:
-                seen_links.add(canonical_link)
             unique_headlines.append(h)
 
         unique_headlines.sort(
             key=lambda h: _parse_published_at(h.get("publishedAt")),
             reverse=True,
         )
+
+        # print(unique_headlines)
 
         latest_timestamp = unique_headlines[0].get("publishedAt", "") if unique_headlines else ""
         analysis_logger.info(
@@ -520,6 +520,8 @@ def get_sentiment_analysis(
         # Limit to max_news for analysis
         limited = unique_headlines[:max_news]
         titles_for_model = [h["title"] for h in limited]
+
+        # print(titles_for_model) #############################################
 
         # Run FinBERT batch analysis
         pipe = _get_finbert()
