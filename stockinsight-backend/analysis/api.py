@@ -4,6 +4,7 @@ Analysis API: single entry point for the frontend. GET /api/analysis/{ticker}/
 from ninja import Router
 
 from analysis.services import run_full_analysis
+from technical.services import get_chart_data
 
 router = Router(tags=["analysis"])
 
@@ -28,3 +29,15 @@ def get_analysis(
     if result is None:
         return {"error": "Ticker not found or invalid"}, 404
     return result
+
+@router.get("/analysis/chart/{ticker}")
+def fetch_chart(
+    request,
+    ticker: str,
+    duration: str = "1Y",
+):
+    """
+    Fetch specific fine-grained chart data based on duration.
+    """
+    data = get_chart_data(ticker=ticker, duration=duration)
+    return {"ohlcv": data}

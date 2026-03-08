@@ -476,6 +476,38 @@
   gap: 0.7rem;
 }
 
+.chart-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chart-type-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chart-type-selector button {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: white;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.chart-type-selector button:hover {
+  background: color-mix(in hsl, var(--line) 30%, white 70%);
+}
+
+.chart-type-selector button.active {
+  background: var(--accent, #2962ff);
+  border-color: var(--accent, #2962ff);
+  color: white;
+}
+
 .tv-chart-wrap {
   border: 1px solid var(--line);
   border-radius: 0.9rem;

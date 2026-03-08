@@ -402,6 +402,60 @@ def score_engine(
         "reasons": reasons,
     }
 
+def get_chart_data(ticker: str, duration: str) -> list[dict]:
+    try:
+        ticker = ticker.upper().strip()
+        t = yf.Ticker(ticker)
+
+        period = "1y"
+        interval = "1d"
+
+        duration = duration.upper()
+        if duration == "1D":
+            period = "1d"
+            interval = "5m"
+        elif duration == "5D":
+            period = "5d"
+            interval = "15m"
+        elif duration == "1M":
+            period = "1mo"
+            interval = "1h"
+        elif duration == "6M":
+            period = "6mo"
+            interval = "1d"
+        elif duration == "YTD":
+            period = "ytd"
+            interval = "1d"
+        elif duration == "1Y":
+            period = "1y"
+            interval = "1d"
+        elif duration == "5Y":
+            period = "5y"
+            interval = "1wk"
+        elif duration == "ALL":
+            period = "max"
+            interval = "1mo"
+
+        df = t.history(period=period, interval=interval, auto_adjust=True)
+        if df is None or df.empty:
+            return []
+
+        ohlcv = [
+            {
+                "date": d.strftime("%Y-%m-%dT%H:%M:%S%z") if hasattr(d, "strftime") else str(d),
+                "open": round(float(row["Open"]), 2),
+                "high": round(float(row["High"]), 2),
+                "low": round(float(row["Low"]), 2),
+                "close": round(float(row["Close"]), 2),
+                "volume": int(row["Volume"]),
+            }
+            for d, row in df.iterrows()
+        ]
+        return ohlcv
+    except Exception as e:
+        logger.exception("Chart data fetch failed for %s duration=%s: %s", ticker, duration, e)
+        return []
+
 def get_technical_analysis(ticker: str, period: str = "1y") -> dict | None:
     try:
         ticker = ticker.upper().strip()

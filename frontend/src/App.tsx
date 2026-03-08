@@ -334,7 +334,7 @@ function AnalysisPage({ ticker, initialPeriod, tab, onTabChange }: AnalysisPageP
         </div>
       )}
 
-      {!isLoading && !error && analysis && renderSection(tab, analysis, period)}
+      {!isLoading && !error && analysis && renderSection(tab, analysis, period, ticker)}
     </section>
   )
 }
@@ -429,16 +429,27 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
   )
 }
 
+type ChartType = 'candle' | 'line' | 'area' | 'bar'
+
+const CHART_TYPE_OPTIONS: Array<{ value: ChartType; label: string }> = [
+  { value: 'candle', label: 'Candlestick' },
+  { value: 'bar', label: 'Bar' },
+  { value: 'line', label: 'Line' },
+  { value: 'area', label: 'Area' },
+]
+
 type TechnicalSectionProps = {
   result: AnalysisResponse['technical']
   selectedPeriod: string
   llmSummary?: string
+  ticker: string
 }
 
 function TechnicalSection({
   result,
   selectedPeriod,
   llmSummary,
+  ticker,
 }: TechnicalSectionProps) {
   if (!result) {
     return (
@@ -453,8 +464,35 @@ function TechnicalSection({
     llmSummary?.trim() || describeTechnicalSignal(result) || describeTrend(data)
   const tradingViewSymbol = toTradingViewSymbol(data.symbol)
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
+  const [chartType, setChartType] = useState<ChartType>('candle')
+  const [chartDuration, setChartDuration] = useState<string>('1M')
+  const [chartData, setChartData] = useState<any[]>([])
+
+  // Fetch fine-grained chart data when duration changes
+  useEffect(() => {
+    let cancelled = false;
+
+    // We import dynamically if needed, but since it's just a fetch it's fine.
+    // However, we need to import fetchChartData into this file.
+    import('./api').then(({ fetchChartData }) => {
+      fetchChartData(ticker, chartDuration)
+        .then((payload) => {
+          if (!cancelled) {
+            setChartData(payload.ohlcv || [])
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to fetch chart data", err)
+        })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [ticker, chartDuration])
 
   useEffect(() => {
+    let cancelled = false
     const container = chartContainerRef.current
     if (!container) return
 
@@ -477,18 +515,15 @@ function TechnicalSection({
         })
 
         lib = (window as any).LightweightCharts
-        if (!lib) {
-          return
-        }
+        if (!lib) return
       }
 
-      const resize = () => {
-        if (!container || !chart) return
-        const { width, height } = container.getBoundingClientRect()
-        chart.applyOptions({ width, height })
-      }
+      if (cancelled) return
 
+      const { width, height } = container.getBoundingClientRect()
       chart = lib.createChart(container, {
+        width,
+        height,
         layout: {
           background: { color: 'white' },
           textColor: '#111827',
@@ -498,6 +533,7 @@ function TechnicalSection({
         },
         timeScale: {
           borderColor: '#e5e7eb',
+          timeVisible: true,
         },
         grid: {
           vertLines: { color: '#f3f4f6' },
@@ -506,20 +542,25 @@ function TechnicalSection({
         localization: {
           locale: 'en-US',
         },
+        handleScroll: false,
+        handleScale: false,
       })
 
-      const candleSeries = chart.addCandlestickSeries()
-
-      const ohlcv = data.ohlcv ?? []
-      const candles = ohlcv
+      const ohlcv = chartData.length > 0 ? chartData : (data.ohlcv ?? [])
+      let candles = ohlcv
         .map((bar) => {
           const t = bar.date
           const dt = typeof t === 'string' ? new Date(t) : new Date(t * 1000)
           if (Number.isNaN(dt.getTime())) {
             return null
           }
+          let ts = dt.getTime() / 1000
+
+          // Lightweight charts requires strictly increasing timestamps. 
+          // For intraday, we must pass it as a unix timestamp. For daily, we can use strings but timestamp is safer.
+          // Note for intraday data we must ensure times match the local timezone of the exchange, but standard unix timestamp works best if auto-scaling.
           return {
-            time: (dt.getTime() / 1000) as any,
+            time: ts as any,
             open: bar.open,
             high: bar.high,
             low: bar.low,
@@ -527,16 +568,60 @@ function TechnicalSection({
           }
         })
         .filter(Boolean) as Array<{
-        time: any
-        open: number
-        high: number
-        low: number
-        close: number
-      }>
+          time: any
+          open: number
+          high: number
+          low: number
+          close: number
+        }>
 
-      candleSeries.setData(candles)
+      // Sort candles by time just in case to avoid LightweightCharts errors
+      candles.sort((a, b) => a.time - b.time)
+
+      // Deduplicate by time to avoid LightweightCharts errors
+      const uniqueCandles: typeof candles = []
+      const seenTimes = new Set()
+      for (const candle of candles) {
+        if (!seenTimes.has(candle.time)) {
+          seenTimes.add(candle.time)
+          uniqueCandles.push(candle)
+        }
+      }
+      candles = uniqueCandles
+
+      const lineData = candles.map((c) => ({ time: c.time, value: c.close }))
+
+      let series: any
+      if (chartType === 'candle') {
+        series = chart.addCandlestickSeries()
+        series.setData(candles)
+      } else if (chartType === 'bar') {
+        series = chart.addBarSeries()
+        series.setData(candles)
+      } else if (chartType === 'area') {
+        series = chart.addAreaSeries({
+          lineColor: '#2962ff',
+          topColor: 'rgba(41, 98, 255, 0.4)',
+          bottomColor: 'rgba(41, 98, 255, 0.0)',
+        })
+        series.setData(lineData)
+      } else {
+        series = chart.addLineSeries({ color: '#2962ff' })
+        series.setData(lineData)
+      }
+
       chart.timeScale().fitContent()
 
+      if (cancelled) {
+        if (chart) chart.remove()
+        return
+      }
+
+      const resize = () => {
+        if (!container || !chart) return
+        const { width: w, height: h } = container.getBoundingClientRect()
+        chart.applyOptions({ width: w, height: h })
+      }
       resize()
       resizeObserver = new ResizeObserver(resize)
       resizeObserver.observe(container)
@@ -547,6 +632,7 @@ function TechnicalSection({
     })
 
     return () => {
+      cancelled = true
       if (resizeObserver && container) {
         resizeObserver.unobserve(container)
       }
@@ -554,7 +640,7 @@ function TechnicalSection({
         chart.remove()
       }
     }
-  }, [data.ohlcv, tradingViewSymbol, selectedPeriod])
+  }, [data.ohlcv, chartData, tradingViewSymbol, selectedPeriod, chartType, chartDuration])
 
   return (
     <article className="panel reveal">
@@ -564,7 +650,39 @@ function TechnicalSection({
       </header>
       <p className="analysis-copy">{trendText}</p>
       <div className="technical-layout">
-        <div className="tv-chart-wrap" ref={chartContainerRef} />
+        <div className="chart-block">
+          <div className="chart-controls" style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
+            <div className="chart-type-selector" style={{ margin: 0 }}>
+              {['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'ALL'].map((dur) => (
+                <button
+                  key={dur}
+                  type="button"
+                  className={chartDuration === dur ? 'active' : ''}
+                  onClick={() => setChartDuration(dur)}
+                >
+                  {dur}
+                </button>
+              ))}
+            </div>
+            <select
+              value={chartType}
+              onChange={(e) => setChartType(e.target.value as ChartType)}
+              aria-label="Select chart type"
+              style={{ marginLeft: 'auto', padding: '4px 8px', borderRadius: '4px', border: '1px solid #e5e7eb' }}
+            >
+              {CHART_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div
+            key={`${chartType}-${chartDuration}`}
+            className="tv-chart-wrap"
+            ref={chartContainerRef}
+          />
+        </div>
         <aside className="technical-side">
           <h3>Data used</h3>
           <MetricList
@@ -893,6 +1011,7 @@ function renderSection(
   tab: AnalysisTab,
   analysis: AnalysisResponse,
   selectedPeriod: string,
+  ticker: string,
 ) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
 
@@ -910,6 +1029,7 @@ function renderSection(
           result={analysis.technical}
           selectedPeriod={selectedPeriod}
           llmSummary={llmSections.technical}
+          ticker={ticker}
         />
       )
     case 'sentiment':

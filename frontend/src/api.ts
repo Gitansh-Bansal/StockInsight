@@ -46,3 +46,18 @@ export async function fetchAnalysis(
     inFlightAnalysisRequests.delete(requestKey)
   }
 }
+
+export async function fetchChartData(
+  ticker: string,
+  duration: string,
+): Promise<{ ohlcv: any[] }> {
+  const url = apiUrl(
+    `/api/analysis/chart/${encodeURIComponent(ticker.trim().toUpperCase())}?duration=${encodeURIComponent(duration)}`,
+  )
+  const response = await fetch(url)
+  const payload = await response.json()
+  if (!response.ok) {
+    throw new Error(payload.error ?? 'Failed to load chart data.')
+  }
+  return payload
+}
