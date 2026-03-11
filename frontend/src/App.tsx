@@ -38,7 +38,7 @@ const ANALYSIS_TABS: Array<{ key: AnalysisTab; label: string }> = [
   { key: 'fundamental', label: 'Fundamental' },
   { key: 'technical', label: 'Technical' },
   { key: 'sentiment', label: 'Sentiment' },
-  { key: 'full-report', label: 'FULL REPORT' },
+  { key: 'full-report', label: 'Full Report' },
 ]
 
 type AppRoute =
@@ -607,6 +607,9 @@ function TechnicalSection({
   const data = resolveTechnicalData(result, selectedPeriod)
   const trendText =
     llmSummary?.trim() || describeTechnicalSignal(result) || describeTrend(data)
+  const technicalBullets = extractBulletPoints(trendText)
+  const indicators = result.indicators
+  const structure = result.structure
   const tradingViewSymbol = toTradingViewSymbol(data.symbol)
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const [chartType, setChartType] = useState<ChartType>('candle')
@@ -793,7 +796,15 @@ function TechnicalSection({
         <h2>Technical Analysis</h2>
         <span className="score-tag">{formatScore(result.score)}</span>
       </header>
-      <p className="analysis-copy">{trendText}</p>
+      {technicalBullets.length > 0 ? (
+        <ul className="analysis-bullets">
+          {technicalBullets.map((item, index) => (
+            <li key={`${item}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="analysis-copy">{trendText}</p>
+      )}
       <div className="technical-layout">
         <div className="chart-block">
           <div className="chart-controls" style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
@@ -832,14 +843,16 @@ function TechnicalSection({
           <h3>Data used</h3>
           <MetricList
             rows={[
-              ['Trend', safeText(result.trend)],
-              ['Signal', safeText(result.signal)],
-              ['Last close', formatCurrency(data.lastClose, 'USD')],
-              ['SMA20', formatCurrency(data.sma20, 'USD')],
-              ['SMA50', formatCurrency(data.sma50, 'USD')],
+              ['Trend Direction', safeText(result.trend)],
+              ['Technical Score', formatScore(result.score)],
               ['RSI (14)', formatNumber(data.rsi)],
-              ['52W range', rangeValue(data['52WeekLow'], data['52WeekHigh'], 'USD')],
-              ['Selected period', selectedPeriod],
+              ['MACD Signal', formatNumber(indicators?.MACD_signal)],
+              ['ADX (Trend Strength)', formatNumber(indicators?.ADX)],
+              ['20D Moving Average', formatCurrency(data.sma20, 'USD')],
+              ['50D Moving Average', formatCurrency(data.sma50, 'USD')],
+              ['200D Moving Average', formatCurrency(indicators?.SMA200, 'USD')],
+              ['Support Level', formatPrimaryLevel(structure?.support)],
+              ['Resistance Level', formatPrimaryLevel(structure?.resistance)],
             ]}
           />
         </aside>
@@ -925,7 +938,9 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
 }
 
 function FullReportSection({ analysis }: { analysis: AnalysisResponse }) {
-  const reportText = emphasizeSummaryLabel(analysis.report?.trim() ?? '')
+  const reportText = normalizeInlineBulletLists(
+    emphasizeSummaryLabel(analysis.report?.trim() ?? ''),
+  )
   const source = analysis.reportSource?.trim() ?? 'unknown'
 
   if (!reportText) {
@@ -951,6 +966,11 @@ function FullReportSection({ analysis }: { analysis: AnalysisResponse }) {
 
 function emphasizeSummaryLabel(text: string): string {
   return text.replace(/^(\s*)Summary:\s*/gim, '$1**Summary:** ')
+}
+
+function normalizeInlineBulletLists(text: string): string {
+  // Strict bullet boundary: only ". -" should be treated as a new bullet.
+  return text.replace(/\. (?=-\s+\S)/g, '.\n')
 }
 
 function MarkdownContent({ text }: { text: string }) {
@@ -1445,12 +1465,15 @@ function formatCurrency(
   return `${decimalFormatter.format(value)} ${currency}`
 }
 
-function rangeValue(
-  low: number | null | undefined,
-  high: number | null | undefined,
-  currency: string,
-): string {
-  return `${formatCurrency(low, currency)} - ${formatCurrency(high, currency)}`
+function formatPrimaryLevel(levels: number[] | null | undefined): string {
+  if (!Array.isArray(levels) || levels.length === 0) {
+    return 'N/A'
+  }
+  const first = levels.find((level) => typeof level === 'number' && Number.isFinite(level))
+  if (typeof first !== 'number') {
+    return 'N/A'
+  }
+  return formatCurrency(first, 'USD')
 }
 
 function safeText(value: string | null | undefined): string {
@@ -1527,13 +1550,80 @@ function summarizeScore(
   return 'Recent news flow is skewed negative and may weigh on near-term sentiment.'
 }
 
+function extractBulletPoints(raw: string): string[] {
+  const text = raw.replace(/\r\n/g, '\n').replace(/\\n/g, '\n').trim()
+  if (!text) {
+    return []
+  }
+
+  // Strict bullet boundary: only ". -" and line-start "- ".
+  const normalizedText = text.replace(/\. (?=-\s+\S)/g, '.\n')
+  const firstMarkerPattern = /(^|\n)-\s+\S/m
+  const firstMarkerMatch = firstMarkerPattern.exec(normalizedText)
+  const leadingText = firstMarkerMatch
+    ? normalizedText
+        .slice(0, firstMarkerMatch.index + (firstMarkerMatch[1]?.length ?? 0))
+        .trim()
+    : ''
+
+  const lineBulletPattern = /^-\s+(.+)$/
+  const bulletsFromLines: string[] = []
+  let current = ''
+
+  for (const rawLine of normalizedText.split('\n')) {
+    const line = rawLine.trim()
+    if (!line) {
+      continue
+    }
+    const bulletMatch = line.match(lineBulletPattern)
+    if (bulletMatch) {
+      if (current) {
+        bulletsFromLines.push(current)
+      }
+      current = bulletMatch[1].trim()
+      continue
+    }
+    if (current) {
+      current = `${current} ${line}`.trim()
+    }
+  }
+
+  if (current) {
+    bulletsFromLines.push(current)
+  }
+
+  if (bulletsFromLines.length > 0) {
+    if (leadingText) {
+      return [leadingText, ...bulletsFromLines]
+    }
+    return bulletsFromLines
+  }
+
+  const flattened = normalizedText.replace(/\s+/g, ' ').trim()
+  if (!flattened.includes('. - ')) {
+    return []
+  }
+  const segments = flattened
+    .split(/\. -\s+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+
+  if (segments.length <= 1) {
+    return []
+  }
+
+  return segments
+}
+
 function parseSentimentSummary(raw: string): { insights: string[]; summary: string } {
-  const text = raw.trim()
+  const text = raw.replace(/\r\n/g, '\n').replace(/\\n/g, '\n').trim()
   if (!text) {
     return { insights: [], summary: '' }
   }
 
-  const summaryLabelMatch = /\bsummary\s*:\s*/i.exec(text)
+  const summaryLabelPattern =
+    /(?:\*\*\s*)?\bsummary\b(?:\s*[:\-]\s*)?(?:\s*\*\*)?\s*[:\-]?\s*/i
+  const summaryLabelMatch = summaryLabelPattern.exec(text)
   let insightsPart = text
   let summaryPart = ''
   if (summaryLabelMatch && typeof summaryLabelMatch.index === 'number') {
@@ -1543,21 +1633,9 @@ function parseSentimentSummary(raw: string): { insights: string[]; summary: stri
       .trim()
   }
 
-  const newlineBullets = insightsPart
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('- '))
-    .map((line) => line.replace(/^-+\s+/, '').trim())
-    .filter(Boolean)
+  const insights = extractBulletPoints(insightsPart)
 
-  let insights = newlineBullets
-  if (insights.length === 0) {
-    insights = Array.from(insightsPart.matchAll(/-\s+(.*?)(?=\s+-\s+|$)/g))
-      .map((match) => match[1].trim())
-      .filter(Boolean)
-  }
-
-  const summary = summaryPart.replace(/^summary\s*:\s*/i, '').trim()
+  const summary = summaryPart.trim()
 
   if (insights.length === 0 && !summary) {
     return { insights: [], summary: text }
