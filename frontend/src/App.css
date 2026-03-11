@@ -569,8 +569,17 @@ th {
   background: color-mix(in hsl, var(--card) 72%, white 28%);
 }
 
+.headline-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 0.8rem;
+}
+
 .headline-item a,
 .headline-item p {
+  display: block;
+  min-width: 0;
   margin: 0;
   color: var(--ink);
   text-decoration: none;
@@ -582,7 +591,10 @@ th {
   text-decoration: underline;
 }
 
-.headline-item span {
+.headline-time {
+  white-space: nowrap;
+  justify-self: end;
+  text-align: right;
   color: var(--muted);
   font-size: 0.78rem;
 }
@@ -681,6 +693,17 @@ th {
 
   .tv-chart-wrap {
     height: 304px;
+  }
+
+  .headline-row {
+    grid-template-columns: 1fr;
+    row-gap: 0.3rem;
+  }
+
+  .headline-time {
+    white-space: normal;
+    justify-self: start;
+    text-align: left;
   }
 }
 

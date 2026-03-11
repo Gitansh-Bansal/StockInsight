@@ -760,7 +760,7 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
         {headlines.length === 0 && <p>No headlines returned from the news sources.</p>}
         {headlines.map((headline, index) => (
           <article className="headline-item" key={`${headline.title}-${index}`}>
-            <div>
+            <div className="headline-row">
               {headline.link ? (
                 <a href={headline.link} target="_blank" rel="noreferrer">
                   {headline.title}
@@ -768,11 +768,8 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
               ) : (
                 <p>{headline.title}</p>
               )}
-              <span>
-                {formatHeadlineTimestamp(resolveHeadlineTimestamp(headline))} | API:{' '}
-                {safeText(headline.apiSource)} | {safeText(headline.source)} |{' '}
-                {headline.sentiment.toUpperCase()} |{' '}
-                {headline.sentimentScore.toFixed(3)}
+              <span className="headline-time">
+                {formatHeadlineTimestamp(resolveHeadlineTimestamp(headline))}
               </span>
             </div>
           </article>
@@ -783,7 +780,7 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
 }
 
 function FullReportSection({ analysis }: { analysis: AnalysisResponse }) {
-  const reportText = analysis.report?.trim() ?? ''
+  const reportText = emphasizeSummaryLabel(analysis.report?.trim() ?? '')
   const source = analysis.reportSource?.trim() ?? 'unknown'
 
   if (!reportText) {
@@ -805,6 +802,10 @@ function FullReportSection({ analysis }: { analysis: AnalysisResponse }) {
       </div>
     </article>
   )
+}
+
+function emphasizeSummaryLabel(text: string): string {
+  return text.replace(/^(\s*)Summary:\s*/gim, '$1**Summary:** ')
 }
 
 function MarkdownContent({ text }: { text: string }) {
@@ -1334,7 +1335,6 @@ function formatHeadlineTimestamp(value: string | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
-    timeZoneName: 'short',
   })
 }
 
