@@ -276,7 +276,7 @@ def _build_structured_prompt(
         '",\n'
         '  "fundamental": "5-7 sentences: mention the score and explain using the fundamental metrics",\n'
         '  "technical": "5-7 sentences: mention the score and explain using the technical metrics",\n'
-        '  "sentiment": "5-7 sentences: mention the score and explain using the news headlines",\n'
+        '  "sentiment": "Start with 3-5 bullet points (use `- `) highlighting the main insights from the news headlines, then add a `Summary:` paragraph of 4-6 sentences that mentions the score and explains the overall sentiment signal",\n'
         '  "riskFactors": "2-4 sentences",\n'
         '  "conclusion": "2-4 sentences: mention the final verdict and conclusion",\n'
         '  "disclaimer": "1 sentence",\n'
@@ -286,6 +286,8 @@ def _build_structured_prompt(
         "Note:\n"
         "- Keep the tone professional.\n"
         "- Be concise and neutral.\n"
+        "- Return strict JSON only (no markdown code fences).\n"
+        "- For `sentiment`, keep the bullets and summary in a single string value.\n"
 
 
         f"Input JSON:\n{json.dumps(payload, ensure_ascii=True)}"

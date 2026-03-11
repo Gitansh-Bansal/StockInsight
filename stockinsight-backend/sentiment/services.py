@@ -409,7 +409,7 @@ def _fetch_from_newsapi_ai(ticker: str, stock_name: str | None, api_key: str) ->
 def get_sentiment_analysis(
     ticker: str,
     stock_name: str | None = None,
-    max_news: int = 100,
+    max_news: int = 200,
 ) -> dict[str, Any] | None:
     """
     Fetch latest news for ticker with Finnhub as primary source.

@@ -719,6 +719,7 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
 
   const headlines: SentimentHeadline[] = result.headlines
   const summary = llmSummary?.trim() || summarizeScore(result.score, 'sentiment')
+  const sentimentSummary = parseSentimentSummary(summary)
 
   return (
     <article className="panel reveal">
@@ -726,7 +727,26 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
         <h2>Sentiment Analysis</h2>
         <span className="score-tag">{formatScore(result.score)}</span>
       </header>
-      <p className="analysis-copy">{summary}</p>
+      <h3>Main Insights from news headlines</h3>
+      {sentimentSummary.insights.length > 0 || sentimentSummary.summary ? (
+        <div className="sentiment-summary">
+          {sentimentSummary.insights.length > 0 && (
+            <ul className="analysis-bullets">
+              {sentimentSummary.insights.map((item, index) => (
+                <li key={`${item}-${index}`}>{item}</li>
+              ))}
+            </ul>
+          )}
+          {sentimentSummary.summary && (
+            <>
+              <h3>Summary</h3>
+              <p className="analysis-copy">{sentimentSummary.summary}</p>
+            </>
+          )}
+        </div>
+      ) : (
+        <p className="analysis-copy">{summary}</p>
+      )}
       <h3>Data used</h3>
       <MetricList
         rows={[
@@ -1365,6 +1385,45 @@ function summarizeScore(
     return 'News tone is balanced overall, without a dominant positive or negative signal.'
   }
   return 'Recent news flow is skewed negative and may weigh on near-term sentiment.'
+}
+
+function parseSentimentSummary(raw: string): { insights: string[]; summary: string } {
+  const text = raw.trim()
+  if (!text) {
+    return { insights: [], summary: '' }
+  }
+
+  const summaryLabelMatch = /\bsummary\s*:\s*/i.exec(text)
+  let insightsPart = text
+  let summaryPart = ''
+  if (summaryLabelMatch && typeof summaryLabelMatch.index === 'number') {
+    insightsPart = text.slice(0, summaryLabelMatch.index).trim()
+    summaryPart = text
+      .slice(summaryLabelMatch.index + summaryLabelMatch[0].length)
+      .trim()
+  }
+
+  const newlineBullets = insightsPart
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('- '))
+    .map((line) => line.replace(/^-+\s+/, '').trim())
+    .filter(Boolean)
+
+  let insights = newlineBullets
+  if (insights.length === 0) {
+    insights = Array.from(insightsPart.matchAll(/-\s+(.*?)(?=\s+-\s+|$)/g))
+      .map((match) => match[1].trim())
+      .filter(Boolean)
+  }
+
+  const summary = summaryPart.replace(/^summary\s*:\s*/i, '').trim()
+
+  if (insights.length === 0 && !summary) {
+    return { insights: [], summary: text }
+  }
+
+  return { insights, summary }
 }
 
 function resolveTechnicalData(

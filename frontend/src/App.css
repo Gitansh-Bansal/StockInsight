@@ -296,6 +296,27 @@
   line-height: 1.5;
 }
 
+.sentiment-summary {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.analysis-bullets {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  display: grid;
+  gap: 0.35rem;
+}
+
+.analysis-bullets li {
+  line-height: 1.45;
+}
+
+.analysis-copy strong {
+  color: var(--ink);
+}
+
 .full-report-markdown {
   display: grid;
   gap: 0.8rem;
