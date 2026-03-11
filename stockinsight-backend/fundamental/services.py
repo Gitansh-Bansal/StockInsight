@@ -203,12 +203,14 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             "pegRatio": _safe_get(info, "pegRatio"),
             "priceToBook": _safe_get(info, "priceToBook"),
             "priceToSalesTrailing12Months": _safe_get(info, "priceToSalesTrailing12Months"),
+            "enterpriseToEbitda": _safe_get(info, "enterpriseToEbitda"),
 
             # Profitability & Margins
             "trailingEps": _safe_get(info, "trailingEps"),
             "forwardEps": _safe_get(info, "forwardEps"),
             "returnOnEquity": _safe_get(info, "returnOnEquity"),
             "returnOnAssets": _safe_get(info, "returnOnAssets"),
+            "returnOnCapitalEmployed": _safe_get(info, "returnOnCapitalEmployed", default=None),
             "grossMargins": _safe_get(info, "grossMargins"),
             "operatingMargins": _safe_get(info, "operatingMargins"),
             "profitMargins": _safe_get(info, "profitMargins"),
@@ -217,6 +219,7 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             "debtToEquity": _safe_get(info, "debtToEquity"),
             "currentRatio": _safe_get(info, "currentRatio"),
             "quickRatio": _safe_get(info, "quickRatio"),
+            "interestCoverage": _safe_get(info, "interestCoverage"),
             "totalCash": _safe_get(info, "totalCash"),
             "totalDebt": _safe_get(info, "totalDebt"),
             "freeCashflow": _safe_get(info, "freeCashflow"),
@@ -243,6 +246,64 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             "recommendationKey": _safe_get(info, "recommendationKey"),
             "numberOfAnalystOpinions": _safe_get(info, "numberOfAnalystOpinions"),
         }
+
+        # Chart Trends Fetching
+        try:
+            inc = t.income_stmt
+            revenue_trend = []
+            if inc is not None and not inc.empty:
+                for col in list(inc.columns)[:5]:
+                    year = col.year
+                    rev = inc.loc['Total Revenue', col] if 'Total Revenue' in inc.index else None
+                    net_inc = inc.loc['Net Income', col] if 'Net Income' in inc.index else None
+                    # Use float natively or None if strictly pandas NaN
+                    # We cast safely avoiding pandas na errors
+                    import pandas as pd
+                    rev_val = float(rev) if pd.notna(rev) else None
+                    net_val = float(net_inc) if pd.notna(net_inc) else None
+                    revenue_trend.append({"year": year, "revenue": rev_val, "netProfit": net_val})
+        except Exception as e:
+            logger.warning("Error fetching income stmt: %s", e)
+            revenue_trend = []
+
+        try:
+            cf = t.cashflow
+            cashflow_trend = []
+            if cf is not None and not cf.empty:
+                for col in list(cf.columns)[:5]:
+                    year = col.year
+                    op_cf = cf.loc['Operating Cash Flow', col] if 'Operating Cash Flow' in cf.index else None
+                    fcf = cf.loc['Free Cash Flow', col] if 'Free Cash Flow' in cf.index else None
+                    import pandas as pd
+                    op_val = float(op_cf) if pd.notna(op_cf) else None
+                    fcf_val = float(fcf) if pd.notna(fcf) else None
+                    cashflow_trend.append({"year": year, "operatingCashFlow": op_val, "freeCashFlow": fcf_val})
+        except Exception as e:
+            logger.warning("Error fetching cashflow: %s", e)
+            cashflow_trend = []
+            
+        try:
+            holders = t.major_holders
+            shareholding_pattern = {}
+            if holders is not None and not holders.empty and 'Value' in holders.columns:
+                insiders = holders.loc['insidersPercentHeld', 'Value'] if 'insidersPercentHeld' in holders.index else 0
+                institutions = holders.loc['institutionsPercentHeld', 'Value'] if 'institutionsPercentHeld' in holders.index else 0
+                import pandas as pd
+                ins = float(insiders) if pd.notna(insiders) else 0
+                inst = float(institutions) if pd.notna(institutions) else 0
+                pub = max(0.0, 1.0 - ins - inst)
+                shareholding_pattern = {
+                    "promoters": ins,
+                    "institutions": inst,
+                    "public": pub
+                }
+        except Exception as e:
+            logger.warning("Error fetching holders: %s", e)
+            shareholding_pattern = {}
+
+        data["revenueTrend"] = revenue_trend[::-1] if revenue_trend else [] # Oldest to newest
+        data["cashflowTrend"] = cashflow_trend[::-1] if cashflow_trend else []
+        data["shareholdingPattern"] = shareholding_pattern
 
         score = _compute_fundamental_score(info)
         return {

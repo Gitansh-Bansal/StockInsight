@@ -37,6 +37,18 @@ export interface FundamentalData {
   dividendYield?: number
   ['52WeekHigh']?: number
   ['52WeekLow']?: number
+  enterpriseToEbitda?: number
+  returnOnCapitalEmployed?: number
+  interestCoverage?: number
+  priceToSalesTrailing12Months?: number
+  quickRatio?: number
+  revenueTrend?: Array<{ year: number; revenue: number | null; netProfit: number | null }>
+  cashflowTrend?: Array<{ year: number; operatingCashFlow: number | null; freeCashFlow: number | null }>
+  shareholdingPattern?: {
+    promoters: number
+    institutions: number
+    public: number
+  }
 }
 
 export interface FundamentalResult {

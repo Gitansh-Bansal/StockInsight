@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { ReactElement } from 'react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
+  AreaChart, Area,
+  PieChart, Pie, Cell
+} from 'recharts'
 import './App.css'
 import { fetchAnalysis } from './api'
 import type {
@@ -383,6 +388,8 @@ type FundamentalSectionProps = {
   llmSummary?: string
 }
 
+const PIE_COLORS = ['#2563eb', '#10b981', '#cbd5e1']
+
 function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
   if (!result) {
     return (
@@ -393,7 +400,6 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
   }
 
   const data: FundamentalData = result.data
-  const currency = data.currency ?? 'USD'
   const summary = llmSummary?.trim() || summarizeScore(result.score, 'fundamental')
 
   return (
@@ -403,28 +409,167 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
         <span className="score-tag">{formatScore(result.score)}</span>
       </header>
       <p className="analysis-copy">{summary}</p>
-      <h3>Data used</h3>
-      <MetricList
-        rows={[
-          ['Sector', safeText(data.sector)],
-          ['Industry', safeText(data.industry)],
-          ['Current price', formatCurrency(data.currentPrice, currency)],
-          ['Market cap', formatCompact(data.marketCap)],
-          ['P/E (trailing)', formatNumber(data.trailingPE)],
-          ['P/E (forward)', formatNumber(data.forwardPE)],
-          ['PEG ratio', formatNumber(data.pegRatio)],
-          ['Price to book', formatNumber(data.priceToBook)],
-          ['Return on equity', formatPercent(data.returnOnEquity)],
-          ['Operating margin', formatPercent(data.operatingMargins)],
-          ['Profit margin', formatPercent(data.profitMargins)],
-          ['Debt to equity', formatNumber(data.debtToEquity)],
-          ['Current ratio', formatNumber(data.currentRatio)],
-          ['Revenue growth', formatPercent(data.revenueGrowth)],
-          ['Earnings growth', formatPercent(data.earningsGrowth)],
-          ['Dividend yield', formatPercent(data.dividendYield)],
-          ['52W range', rangeValue(data['52WeekLow'], data['52WeekHigh'], currency)],
-        ]}
-      />
+      
+      <div className="fundamentals-grid">
+        {/* Section A: Valuation */}
+        <div className="fund-card">
+          <h3>Valuation</h3>
+          <div className="fund-metrics">
+            <div className="metric">
+              <span className="label">P/E (Trailing)</span>
+              <span className="val">{formatNumber(data.trailingPE)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">P/S (TTM)</span>
+              <span className="val">{formatNumber(data.priceToSalesTrailing12Months)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">P/B Ratio</span>
+              <span className="val">{formatNumber(data.priceToBook)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">EV/EBITDA</span>
+              <span className="val">{formatNumber(data.enterpriseToEbitda)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Section B: Profitability */}
+        <div className="fund-card">
+          <h3>Profitability</h3>
+          <div className="fund-metrics">
+            <div className="metric">
+              <span className="label">ROE</span>
+              <span className="val">{formatPercent(data.returnOnEquity)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">ROCE</span>
+              <span className="val">{formatPercent(data.returnOnCapitalEmployed)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">Operating Margin</span>
+              <span className="val">{formatPercent(data.operatingMargins)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">Net Margin</span>
+              <span className="val">{formatPercent(data.profitMargins)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Section C: Solvency */}
+        <div className="fund-card">
+          <h3>Solvency</h3>
+          <div className="fund-metrics">
+            <div className="metric">
+              <span className="label">Debt/Equity</span>
+              <span className="val">{formatNumber(data.debtToEquity)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">Current Ratio</span>
+              <span className="val">{formatNumber(data.currentRatio)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">Quick Ratio</span>
+              <span className="val">{formatNumber(data.quickRatio)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">Interest Coverage</span>
+              <span className="val">{formatNumber(data.interestCoverage)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="charts-grid">
+        {data.revenueTrend && data.revenueTrend.length > 0 && (
+          <div className="chart-card">
+            <h3>Revenue & Net Profit</h3>
+            <div className="recharts-wrapper">
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={data.revenueTrend}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={60} />
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  <RechartsTooltip formatter={(val: any) => usdFormatter.format(val)} cursor={{fill: 'rgba(0,0,0,0.05)'}} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Bar dataKey="revenue" name="Revenue" fill="#94a3b8" radius={[4,4,0,0]} />
+                  <Bar dataKey="netProfit" name="Net Profit" fill="#2563eb" radius={[4,4,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {data.cashflowTrend && data.cashflowTrend.length > 0 && (
+          <div className="chart-card">
+            <h3>Cash Flow Breakdown</h3>
+            <div className="recharts-wrapper">
+              <ResponsiveContainer width="100%" height={250}>
+                <AreaChart data={data.cashflowTrend}>
+                  <defs>
+                    <linearGradient id="colorOp" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorFcf" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={60} />
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  <RechartsTooltip formatter={(val: any) => usdFormatter.format(val)} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Area type="monotone" dataKey="operatingCashFlow" name="Op Cash Flow" stroke="#2563eb" fillOpacity={1} fill="url(#colorOp)" stackId="1" />
+                  <Area type="monotone" dataKey="freeCashFlow" name="Free Cash Flow" stroke="#10b981" fillOpacity={1} fill="url(#colorFcf)" stackId="1" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {data.shareholdingPattern && (data.shareholdingPattern.promoters > 0 || data.shareholdingPattern.institutions > 0) && (() => {
+          const s = data.shareholdingPattern
+          const pieData = [
+            { name: 'Insiders', value: s.promoters },
+            { name: 'Institutions', value: s.institutions },
+            { name: 'Public', value: s.public }
+          ].filter(d => d.value > 0)
+
+          return (
+            <div className="chart-card">
+              <h3>Shareholding Pattern</h3>
+              <div className="recharts-wrapper">
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {pieData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(1)}%`} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )
+        })()}
+      </div>
     </article>
   )
 }
@@ -1278,12 +1423,7 @@ function formatNumber(value: number | null | undefined): string {
   return decimalFormatter.format(value)
 }
 
-function formatCompact(value: number | null | undefined): string {
-  if (typeof value !== 'number') {
-    return 'N/A'
-  }
-  return compactFormatter.format(value)
-}
+
 
 function formatPercent(value: number | null | undefined): string {
   if (typeof value !== 'number') {

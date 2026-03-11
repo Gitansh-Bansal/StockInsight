@@ -1,14 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 :root {
-  --ink: #1f2421;
-  --muted: #5d645f;
-  --accent: #0b7a75;
-  --accent-2: #ca6b43;
-  --line: #d6d0c4;
-  --line-strong: #bfb8a9;
-  --card: #fff7ee;
-  --shadow: 0 14px 28px rgb(27 22 17 / 8%);
+  --ink: #0f172a;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-2: #10b981;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --card: #ffffff;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
   --mono-font: 'IBM Plex Mono', 'Consolas', monospace;
   font-family: 'Manrope', 'Avenir Next', 'Segoe UI', sans-serif;
   line-height: 1.5;
@@ -30,10 +30,10 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(1100px 420px at 10% -8%, #f5d9b8 0%, transparent 65%),
-    radial-gradient(900px 350px at 90% 5%, #c9e8e4 0%, transparent 60%),
-    linear-gradient(170deg, #ece4d7 0%, #f5efe7 48%, #ede5d7 100%);
+  background-color: #f8fafc;
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(217, 100%, 95%, 1) 0, transparent 50%), 
+    radial-gradient(at 100% 0%, hsla(160, 100%, 96%, 1) 0, transparent 50%);
 }
 
 #root {
