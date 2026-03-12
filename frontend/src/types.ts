@@ -105,6 +105,7 @@ export interface TechnicalResult {
   symbol?: string
   trend?: string
   signal?: string
+  regime?: string
   reasons?: string[]
   indicators?: TechnicalIndicators
   structure?: TechnicalStructure
