@@ -2242,6 +2242,212 @@ th {
   }
 }
 
+.val-positive {
+  color: #10b981;
+}
+
+.val-negative {
+  color: #ef4444;
+}
+
+/* --- New UI Dashboard Custom Components --- */
+
+/* Progress Bar Component */
+.progress-widget {
+  margin-bottom: 0.75rem;
+}
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.progress-header .val {
+  font-weight: 700;
+  color: var(--ink);
+  font-family: var(--mono-font);
+}
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 4px;
+  transition: width 0.5s ease-out;
+}
+.progress-bounds {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: var(--mono-font);
+}
+
+/* Stacked Bar Burn */
+.stacked-widget {
+  margin: 1rem 0;
+}
+.stacked-track {
+  display: flex;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+.stacked-fill {
+  height: 100%;
+  transition: width 0.5s ease-out;
+}
+.stacked-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+.stacked-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--mono-font);
+  font-weight: 600;
+  color: var(--ink);
+}
+.stacked-label .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* Badge/Pill System */
+.metric-badge {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.metric-badge:last-child {
+  border-bottom: none;
+}
+.metric-badge .badge-label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.badge-val {
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  background: color-mix(in hsl, var(--line) 30%, transparent);
+  font-family: var(--mono-font);
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+.badge-val.val-positive {
+  background: color-mix(in hsl, #10b981 15%, transparent);
+  color: #059669;
+}
+.badge-val.val-negative {
+  background: color-mix(in hsl, #ef4444 15%, transparent);
+  color: #dc2626;
+}
+.badge-val.val-neutral {
+  background: color-mix(in hsl, var(--muted) 15%, transparent);
+  color: var(--muted);
+}
+
+.market-hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  margin: 1.5rem 0 2rem 0;
+  padding: 1.5rem;
+  background: color-mix(in hsl, var(--primary) 5%, transparent);
+  border-radius: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.market-hero .hero-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 140px;
+}
+.market-hero .hero-metric .label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.market-hero .hero-metric .val {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: var(--mono-font);
+  color: var(--ink);
+}
+.market-hero .progress-widget {
+  flex: 1;
+  min-width: 250px;
+  margin-bottom: 0;
+}
+
+.growth-strip {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+}
+
+.growth-header h3 {
+  margin: 0 0 1rem 0;
+  font-size: 0.95rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  border-bottom: 2px solid color-mix(in hsl, var(--line) 40%, transparent);
+  padding-bottom: 0.5rem;
+}
+
+.growth-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  justify-content: space-between;
+}
+
+.growth-metrics .hero-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.growth-metrics .hero-metric .label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.growth-metrics .hero-metric .val {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: var(--mono-font);
+  color: var(--ink);
+}
+
 .fundamentals-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -2309,7 +2515,7 @@ th {
 
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
   gap: 1.25rem;
   margin-top: 1rem;
 }

@@ -4,7 +4,8 @@ import type { ReactElement } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   AreaChart, Area,
-  PieChart, Pie, Cell
+  PieChart, Pie, Cell,
+  LineChart, Line
 } from 'recharts'
 import './App.css'
 import { fetchAnalysis } from './api'
@@ -389,6 +390,28 @@ type FundamentalSectionProps = {
   llmSummary?: string
 }
 
+function StackedBarBurn({ labelA, labelB, valA, valB, colorA, colorB }: { labelA: string, labelB: string, valA?: number, valB?: number, colorA: string, colorB: string }) {
+  if (valA === undefined && valB === undefined) return null;
+  const a = valA || 0;
+  const b = valB || 0;
+  const total = a + b;
+  const percentA = total > 0 ? (a / total) * 100 : 0;
+  const percentB = total > 0 ? (b / total) * 100 : 0;
+
+  return (
+    <div className="stacked-widget">
+      <div className="stacked-track">
+        <div className="stacked-fill" style={{ width: `${percentA}%`, backgroundColor: colorA }}></div>
+        <div className="stacked-fill" style={{ width: `${percentB}%`, backgroundColor: colorB }}></div>
+      </div>
+      <div className="stacked-labels">
+        <div className="stacked-label"><span className="swatch" style={{backgroundColor: colorA}}></span>{labelA}: {a > 0 ? compactFormatter.format(a) : 'N/A'}</div>
+        <div className="stacked-label"><span className="swatch" style={{backgroundColor: colorB}}></span>{labelB}: {b > 0 ? compactFormatter.format(b) : 'N/A'}</div>
+      </div>
+    </div>
+  )
+}
+
 const PIE_COLORS = ['#2563eb', '#10b981', '#cbd5e1']
 
 function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
@@ -411,14 +434,37 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
       </header>
       <p className="analysis-copy">{summary}</p>
       
+      <div className="market-hero">
+        <div className="hero-metric">
+          <span className="label">P/E Ratio</span>
+          <span className="val">{formatNumber(data.trailingPE)}</span>
+        </div>
+        <div className="hero-metric">
+          <span className="label">Market Cap</span>
+          <span className="val">{data.marketCap ? compactFormatter.format(data.marketCap) : 'N/A'}</span>
+        </div>
+        <div className="hero-metric">
+          <span className="label">Ent. Value</span>
+          <span className="val">{data.enterpriseValue ? compactFormatter.format(data.enterpriseValue) : 'N/A'}</span>
+        </div>
+        <div className="hero-metric">
+          <span className="label">Beta</span>
+          <span className="val">{formatNumber(data.beta)}</span>
+        </div>
+      </div>
+
       <div className="fundamentals-grid">
-        {/* Section A: Valuation */}
+        {/* Card 1: Valuation */}
         <div className="fund-card">
           <h3>Valuation</h3>
           <div className="fund-metrics">
             <div className="metric">
-              <span className="label">P/E (Trailing)</span>
-              <span className="val">{formatNumber(data.trailingPE)}</span>
+              <span className="label">P/E (Forward)</span>
+              <span className="val">{formatNumber(data.forwardPE)}</span>
+            </div>
+            <div className="metric">
+              <span className="label">PEG Ratio</span>
+              <span className="val">{formatNumber(data.pegRatio)}</span>
             </div>
             <div className="metric">
               <span className="label">P/S (TTM)</span>
@@ -435,33 +481,45 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
           </div>
         </div>
 
-        {/* Section B: Profitability */}
+        {/* Card 4: Profitability */}
         <div className="fund-card">
           <h3>Profitability</h3>
           <div className="fund-metrics">
             <div className="metric">
               <span className="label">ROE</span>
-              <span className="val">{formatPercent(data.returnOnEquity)}</span>
+              <span className="val"><ColoredValue value={data.returnOnEquity} formatFn={formatPercent} /></span>
+            </div>
+            <div className="metric">
+              <span className="label">ROA</span>
+              <span className="val"><ColoredValue value={data.returnOnAssets} formatFn={formatPercent} /></span>
             </div>
             <div className="metric">
               <span className="label">ROCE</span>
-              <span className="val">{formatPercent(data.returnOnCapitalEmployed)}</span>
+              <span className="val"><ColoredValue value={data.returnOnCapitalEmployed} formatFn={formatPercent} /></span>
             </div>
             <div className="metric">
               <span className="label">Operating Margin</span>
-              <span className="val">{formatPercent(data.operatingMargins)}</span>
+              <span className="val"><ColoredValue value={data.operatingMargins} formatFn={formatPercent} /></span>
             </div>
             <div className="metric">
               <span className="label">Net Margin</span>
-              <span className="val">{formatPercent(data.profitMargins)}</span>
+              <span className="val"><ColoredValue value={data.profitMargins} formatFn={formatPercent} /></span>
             </div>
           </div>
         </div>
 
-        {/* Section C: Solvency */}
+        {/* Card 5: Financial Health */}
         <div className="fund-card">
-          <h3>Solvency</h3>
-          <div className="fund-metrics">
+          <h3>Financial Health</h3>
+          <StackedBarBurn 
+            labelA="Total Cash" 
+            labelB="Total Debt" 
+            valA={data.totalCash} 
+            valB={data.totalDebt} 
+            colorA="#10b981" 
+            colorB="#ef4444" 
+          />
+          <div className="fund-metrics" style={{marginTop: '1rem'}}>
             <div className="metric">
               <span className="label">Debt/Equity</span>
               <span className="val">{formatNumber(data.debtToEquity)}</span>
@@ -478,6 +536,35 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
               <span className="label">Interest Coverage</span>
               <span className="val">{formatNumber(data.interestCoverage)}</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Growth & Dividends Strip */}
+      <div className="growth-strip">
+        <div className="growth-header">
+          <h3>Growth & Dividends</h3>
+        </div>
+        <div className="growth-metrics">
+          <div className="hero-metric">
+            <span className="label">Revenue Growth</span>
+            <span className="val"><ColoredValue value={data.revenueGrowth} formatFn={formatPercent} /></span>
+          </div>
+          <div className="hero-metric">
+            <span className="label">Earnings Growth</span>
+            <span className="val"><ColoredValue value={data.earningsGrowth} formatFn={formatPercent} /></span>
+          </div>
+          <div className="hero-metric">
+            <span className="label">Gross Margin</span>
+            <span className="val">{formatPercent(data.grossMargins)}</span>
+          </div>
+          <div className="hero-metric">
+            <span className="label">Dividend Yield</span>
+            <span className="val"><ColoredValue value={data.dividendYield} formatFn={formatPercent} /></span>
+          </div>
+          <div className="hero-metric">
+            <span className="label">Payout Ratio</span>
+            <span className="val">{formatPercent(data.payoutRatio)}</span>
           </div>
         </div>
       </div>
@@ -570,6 +657,26 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
             </div>
           )
         })()}
+
+        {data.marginsTrend && data.marginsTrend.length > 0 && (
+          <div className="chart-card">
+            <h3>Margins History</h3>
+            <div className="recharts-wrapper">
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={data.marginsTrend}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={(val) => `${(val * 100).toFixed(0)}%`} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={45} />
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(2)}%`} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Line type="monotone" dataKey="operatingMargin" name="Operating Margin" stroke="#2563eb" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="netMargin" name="Net Margin" stroke="#10b981" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
       </div>
     </article>
   )
@@ -2087,6 +2194,21 @@ function formatNumber(value: number | null | undefined): string {
     return 'N/A'
   }
   return decimalFormatter.format(value)
+}
+
+function ColoredValue({ value, formatFn }: { value: number | null | undefined, formatFn: (v: number | null | undefined) => string }) {
+  const isNa = typeof value !== 'number'
+  const text = formatFn(value)
+  if (isNa) {
+    return <span>{text}</span>
+  }
+  
+  if ((value as number) > 0) {
+    return <span className="val-positive">{text}</span>
+  } else if ((value as number) < 0) {
+    return <span className="val-negative">{text}</span>
+  }
+  return <span>{text}</span>
 }
 
 

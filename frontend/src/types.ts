@@ -42,7 +42,15 @@ export interface FundamentalData {
   interestCoverage?: number
   priceToSalesTrailing12Months?: number
   quickRatio?: number
+  grossMargins?: number
+  totalCash?: number
+  totalDebt?: number
+  payoutRatio?: number
+  targetMeanPrice?: number
+  recommendationKey?: string
+  numberOfAnalystOpinions?: number
   revenueTrend?: Array<{ year: number; revenue: number | null; netProfit: number | null }>
+  marginsTrend?: Array<{ year: number; operatingMargin: number | null; netMargin: number | null }>
   cashflowTrend?: Array<{ year: number; operatingCashFlow: number | null; freeCashFlow: number | null }>
   shareholdingPattern?: {
     promoters: number

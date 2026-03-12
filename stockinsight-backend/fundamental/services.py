@@ -251,20 +251,33 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
         try:
             inc = t.income_stmt
             revenue_trend = []
+            margins_trend = []
             if inc is not None and not inc.empty:
                 for col in list(inc.columns)[:5]:
                     year = col.year
                     rev = inc.loc['Total Revenue', col] if 'Total Revenue' in inc.index else None
                     net_inc = inc.loc['Net Income', col] if 'Net Income' in inc.index else None
-                    # Use float natively or None if strictly pandas NaN
-                    # We cast safely avoiding pandas na errors
+                    op_inc = inc.loc['Operating Income', col] if 'Operating Income' in inc.index else None
+                    
                     import pandas as pd
                     rev_val = float(rev) if pd.notna(rev) else None
                     net_val = float(net_inc) if pd.notna(net_inc) else None
+                    op_val = float(op_inc) if pd.notna(op_inc) else None
+                    
                     revenue_trend.append({"year": year, "revenue": rev_val, "netProfit": net_val})
+                    
+                    # Calculate margins manually to ensure historical accuracy 
+                    op_margin = (op_val / rev_val) if (op_val is not None and rev_val is not None and rev_val > 0) else None
+                    net_margin = (net_val / rev_val) if (net_val is not None and rev_val is not None and rev_val > 0) else None
+                    margins_trend.append({
+                        "year": year, 
+                        "operatingMargin": op_margin, 
+                        "netMargin": net_margin
+                    })
         except Exception as e:
             logger.warning("Error fetching income stmt: %s", e)
             revenue_trend = []
+            margins_trend = []
 
         try:
             cf = t.cashflow
@@ -302,6 +315,7 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             shareholding_pattern = {}
 
         data["revenueTrend"] = revenue_trend[::-1] if revenue_trend else [] # Oldest to newest
+        data["marginsTrend"] = margins_trend[::-1] if margins_trend else []
         data["cashflowTrend"] = cashflow_trend[::-1] if cashflow_trend else []
         data["shareholdingPattern"] = shareholding_pattern
 
