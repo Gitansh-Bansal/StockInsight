@@ -586,11 +586,14 @@ const CHART_TYPE_OPTIONS: Array<{ value: ChartType; label: string }> = [
   { value: 'area', label: 'Area' },
 ]
 
+const CHART_DURATION_OPTIONS = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'ALL']
+
 type TechnicalSectionProps = {
   result: AnalysisResponse['technical']
   selectedPeriod: string
   llmSummary?: string
   ticker: string
+  companyName?: string
   beta: number | null
 }
 
@@ -599,6 +602,7 @@ function TechnicalSection({
   selectedPeriod,
   llmSummary,
   ticker,
+  companyName,
   beta,
 }: TechnicalSectionProps) {
   if (!result) {
@@ -693,6 +697,31 @@ function TechnicalSection({
   const sma20Position = resolveAveragePositionStatus(data.sma20, currentPrice)
   const sma50Position = resolveAveragePositionStatus(data.sma50, currentPrice)
   const sma200Position = resolveAveragePositionStatus(sma200, currentPrice)
+  const low52 = data['52WeekLow']
+  const high52 = data['52WeekHigh']
+  const has52WeekRange =
+    isFiniteNumber(low52) &&
+    isFiniteNumber(high52) &&
+    high52 > low52 &&
+    isFiniteNumber(currentPrice)
+  const yearRangePercent = has52WeekRange
+    ? clampPercent(((currentPrice - low52) / (high52 - low52)) * 100)
+    : 50
+  const yearRangeTone: InsightTone = !has52WeekRange
+    ? 'neutral'
+    : yearRangePercent >= 65
+      ? 'bullish'
+      : yearRangePercent <= 35
+        ? 'bearish'
+        : 'neutral'
+  const yearRangeStatus = !has52WeekRange
+    ? 'Not available'
+    : yearRangePercent >= 80
+      ? 'Near 52W high'
+      : yearRangePercent <= 20
+        ? 'Near 52W low'
+        : 'Within range'
+  const yearRangeValue = has52WeekRange ? `${yearRangePercent.toFixed(1)}%` : 'N/A'
 
   const snapshotTiles: TechnicalSnapshotRow[] = [
     {
@@ -706,14 +735,14 @@ function TechnicalSection({
         : toneToPercent(trendBias),
     },
     {
-      key: 'score',
-      metric: 'Technical Score',
-      value: formatScore(result.score),
-      status: scoreBand(result.score),
-      tone: scoreToTone(result.score),
-      progressPercent: isFiniteNumber(result.score) ? clampPercent(result.score) : 50,
-      numeric: isFiniteNumber(result.score)
-        ? { value: result.score, format: 'number', decimals: 1 }
+      key: 'range52',
+      metric: '52W Range Position',
+      value: yearRangeValue,
+      status: yearRangeStatus,
+      tone: yearRangeTone,
+      progressPercent: yearRangePercent,
+      numeric: has52WeekRange
+        ? { value: yearRangePercent, format: 'percent', decimals: 1 }
         : undefined,
     },
     {
@@ -808,7 +837,76 @@ function TechnicalSection({
   const [chartType, setChartType] = useState<ChartType>('candle')
   const [chartDuration, setChartDuration] = useState<string>('1M')
   const [chartData, setChartData] = useState<any[]>([])
+  const [isChartLoading, setIsChartLoading] = useState(false)
+  const [chartFetchError, setChartFetchError] = useState('')
+  const [isChartReady, setIsChartReady] = useState(false)
   const [showPriceRangeMarkers, setShowPriceRangeMarkers] = useState(false)
+  const activeChartRows = useMemo(
+    () => (chartData.length > 0 ? chartData : (data.ohlcv ?? [])),
+    [chartData, data.ohlcv],
+  )
+  const chartPerformance = useMemo(() => {
+    const closes = activeChartRows
+      .map((point) => point?.close)
+      .filter((value): value is number => isFiniteNumber(value))
+    if (closes.length < 2 || closes[0] === 0) {
+      return null
+    }
+    const start = closes[0]
+    const end = closes[closes.length - 1]
+    const change = end - start
+    return {
+      start,
+      end,
+      change,
+      percent: (change / start) * 100,
+    }
+  }, [activeChartRows])
+  const chartDirectionTone: InsightTone =
+    chartPerformance && chartPerformance.change > 0
+      ? 'bullish'
+      : chartPerformance && chartPerformance.change < 0
+        ? 'bearish'
+        : 'neutral'
+  const chartDirectionLabel =
+    chartPerformance && chartPerformance.change > 0
+      ? 'Uptrend'
+      : chartPerformance && chartPerformance.change < 0
+        ? 'Downtrend'
+        : 'Sideways'
+  const livePrice = useMemo(() => {
+    const latest = activeChartRows[activeChartRows.length - 1]?.close
+    if (isFiniteNumber(latest)) {
+      return latest
+    }
+    return isFiniteNumber(currentPrice) ? currentPrice : null
+  }, [activeChartRows, currentPrice])
+  const technicalScoreTone = scoreToTone(result.score)
+  const technicalScorePercent = isFiniteNumber(result.score)
+    ? clampPercent(result.score)
+    : 50
+  const animatedTechnicalScorePercent = useAnimatedNumber(technicalScorePercent, 900)
+  const technicalScoreZone = isFiniteNumber(result.score)
+    ? result.score < 30
+      ? 'strong-bearish'
+      : result.score < 45
+        ? 'bearish'
+        : result.score < 55
+          ? 'neutral'
+          : result.score < 70
+            ? 'bullish'
+            : 'strong-bullish'
+    : 'neutral'
+  const technicalSignalLabel =
+    result.signal === 'Strong Bullish'
+      ? 'Strongly Bullish'
+      : result.signal === 'Strong Bearish'
+        ? 'Strongly Bearish'
+        : safeText(result.signal)
+  const symbolLabel = ticker.toUpperCase()
+  const chartTitle = companyName?.trim()
+    ? `${companyName.trim()} (${symbolLabel})`
+    : symbolLabel
 
   useEffect(() => {
     setShowPriceRangeMarkers(false)
@@ -824,21 +922,30 @@ function TechnicalSection({
 
   // Fetch fine-grained chart data when duration changes
   useEffect(() => {
-    let cancelled = false;
+    let cancelled = false
+    setIsChartLoading(true)
+    setChartFetchError('')
 
-    // We import dynamically if needed, but since it's just a fetch it's fine.
-    // However, we need to import fetchChartData into this file.
-    import('./api').then(({ fetchChartData }) => {
-      fetchChartData(ticker, chartDuration)
-        .then((payload) => {
-          if (!cancelled) {
-            setChartData(payload.ohlcv || [])
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to fetch chart data", err)
-        })
-    })
+    import('./api')
+      .then(({ fetchChartData }) => fetchChartData(ticker, chartDuration))
+      .then((payload) => {
+        if (!cancelled) {
+          setChartData(payload.ohlcv || [])
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          const message =
+            err instanceof Error ? err.message : 'Failed to load chart data.'
+          setChartFetchError(message)
+          setChartData([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsChartLoading(false)
+        }
+      })
 
     return () => {
       cancelled = true
@@ -850,6 +957,7 @@ function TechnicalSection({
     const container = chartContainerRef.current
     if (!container) return
 
+    setIsChartReady(false)
     let chart: any | null = null
     let resizeObserver: ResizeObserver | null = null
 
@@ -900,7 +1008,7 @@ function TechnicalSection({
         handleScale: false,
       })
 
-      const ohlcv = chartData.length > 0 ? chartData : (data.ohlcv ?? [])
+      const ohlcv = activeChartRows
       let candles = ohlcv
         .map((bar) => {
           const t = bar.date
@@ -965,6 +1073,9 @@ function TechnicalSection({
       }
 
       chart.timeScale().fitContent()
+      if (!cancelled) {
+        setIsChartReady(true)
+      }
 
       if (cancelled) {
         if (chart) chart.remove()
@@ -983,6 +1094,9 @@ function TechnicalSection({
 
     initChart().catch(() => {
       // Fail silently; layout still renders without the chart.
+      if (!cancelled) {
+        setIsChartReady(true)
+      }
     })
 
     return () => {
@@ -994,7 +1108,7 @@ function TechnicalSection({
         chart.remove()
       }
     }
-  }, [data.ohlcv, chartData, tradingViewSymbol, selectedPeriod, chartType, chartDuration])
+  }, [activeChartRows, tradingViewSymbol, selectedPeriod, chartType, chartDuration])
 
   return (
     <article className="panel reveal">
@@ -1013,58 +1127,137 @@ function TechnicalSection({
       )}
       <div className="technical-layout">
         <div className="chart-block">
-          <div className="chart-controls" style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
-            <div className="chart-type-selector" style={{ margin: 0 }}>
-              {['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'ALL'].map((dur) => (
-                <button
-                  key={dur}
-                  type="button"
-                  className={chartDuration === dur ? 'active' : ''}
-                  onClick={() => setChartDuration(dur)}
-                >
-                  {dur}
-                </button>
-              ))}
+          <div className="chart-surface-head">
+            <div className="chart-context">
+              <div className="chart-context-main">
+                <div className="chart-symbol-price">
+                  <h3>{chartTitle}</h3>
+                  <span className="chart-live-price">
+                    <span className="chart-live-dot" aria-hidden="true" />
+                    {livePrice !== null ? formatCurrency(livePrice, 'USD') : 'N/A'}
+                  </span>
+                </div>
+                <span className={`chart-delta tone-${chartDirectionTone}`}>
+                  {chartPerformance
+                    ? `${chartPerformance.change >= 0 ? '+' : ''}${chartPerformance.percent.toFixed(2)}%`
+                    : 'N/A'}
+                </span>
+              </div>
+              <p className="chart-context-meta">
+                {chartPerformance
+                  ? `${chartDirectionLabel} in ${chartDuration}: ${formatCurrency(chartPerformance.start, 'USD')} -> ${formatCurrency(chartPerformance.end, 'USD')}`
+                  : 'Switch duration and chart style to inspect movement.'}
+              </p>
             </div>
-            <select
-              value={chartType}
-              onChange={(e) => setChartType(e.target.value as ChartType)}
-              aria-label="Select chart type"
-              style={{ marginLeft: 'auto', padding: '4px 8px', borderRadius: '4px', border: '1px solid #e5e7eb' }}
-            >
-              {CHART_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <div className="chart-controls" aria-label="Chart controls">
+              <div className="chart-type-selector">
+                {CHART_DURATION_OPTIONS.map((dur) => (
+                  <button
+                    key={dur}
+                    type="button"
+                    className={chartDuration === dur ? 'active' : ''}
+                    onClick={() => setChartDuration(dur)}
+                  >
+                    {dur}
+                  </button>
+                ))}
+              </div>
+              <select
+                className="chart-type-select"
+                value={chartType}
+                onChange={(e) => setChartType(e.target.value as ChartType)}
+                aria-label="Select chart type"
+              >
+                {CHART_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div
-            key={`${chartType}-${chartDuration}`}
-            className="tv-chart-wrap"
-            ref={chartContainerRef}
-          />
+            className={`tv-chart-shell${isChartLoading ? ' is-loading' : ''}${isChartReady ? ' is-ready' : ''}${chartFetchError ? ' has-error' : ''}`}
+          >
+            <div
+              key={`${chartType}-${chartDuration}`}
+              className="tv-chart-wrap"
+              ref={chartContainerRef}
+            />
+            {isChartLoading && (
+              <div className="chart-overlay" role="status" aria-live="polite">
+                <span className="chart-loader-line" />
+                <p>Refreshing chart...</p>
+              </div>
+            )}
+            {!isChartLoading && chartFetchError && (
+              <div className="chart-overlay chart-overlay-error" role="status">
+                <p>{chartFetchError}</p>
+              </div>
+            )}
+            {!isChartLoading && !chartFetchError && activeChartRows.length === 0 && (
+              <div className="chart-overlay" role="status">
+                <p>No chart data available for this range.</p>
+              </div>
+            )}
+          </div>
         </div>
-        <aside className="technical-side">
-          <h3>Data used</h3>
-          <MetricList
-            rows={[
-              ['Trend Direction', safeText(result.trend)],
-              ['Technical Score', formatScore(result.score)],
-              ['RSI (14)', formatNumber(data.rsi)],
-              ['MACD Signal', formatNumber(indicators?.MACD_signal)],
-              ['ADX (Trend Strength)', formatNumber(indicators?.ADX)],
-              ['20D Moving Average', formatCurrency(data.sma20, 'USD')],
-              ['50D Moving Average', formatCurrency(data.sma50, 'USD')],
-              ['200D Moving Average', formatCurrency(indicators?.SMA200, 'USD')],
-              ['Support Level', formatPrimaryLevel(structure?.support)],
-              ['Resistance Level', formatPrimaryLevel(structure?.resistance)],
-            ]}
-          />
+        <aside className="technical-side-column">
+          <section className={`technical-score-card tone-${technicalScoreTone}`}>
+            <h3>Technical Score</h3>
+            <div className={`technical-score-meter-wrap zone-${technicalScoreZone}`}>
+              <div className="technical-score-meter-head">
+                <span className="technical-score-signal">{technicalSignalLabel}</span>
+                <strong className="technical-score-value">{formatScore(result.score)}</strong>
+              </div>
+              <div className="technical-score-meter-visual" aria-hidden="true">
+                <div className="technical-score-meter-track">
+                  <div className="technical-score-meter-segments">
+                    <span className="segment strong-bearish" />
+                    <span className="segment bearish" />
+                    <span className="segment neutral" />
+                    <span className="segment bullish" />
+                    <span className="segment strong-bullish" />
+                  </div>
+                  <span
+                    className="technical-score-meter-marker"
+                    style={{ left: `${clampPercent(animatedTechnicalScorePercent ?? 0)}%` }}
+                  />
+                </div>
+                <div className="technical-score-meter-scale">
+                  {[0, 25, 50, 75, 100].map((tick) => (
+                    <span
+                      key={`score-tick-${tick}`}
+                      className={`technical-score-meter-tick${tick === 0 ? ' edge-start' : ''}${tick === 100 ? ' edge-end' : ''}`}
+                      style={{ left: `${tick}%` }}
+                    >
+                      <span className="technical-score-meter-tick-mark" />
+                      <span className="technical-score-meter-tick-label">{tick}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+          <section className="technical-data-card">
+            <h3>Data used</h3>
+            <MetricList
+              rows={[
+                ['Trend Direction', safeText(result.trend)],
+                ['RSI (14)', formatNumber(data.rsi)],
+                ['MACD Signal', formatNumber(indicators?.MACD_signal)],
+                ['ADX (Trend Strength)', formatNumber(indicators?.ADX)],
+                ['20D Moving Average', formatCurrency(data.sma20, 'USD')],
+                ['50D Moving Average', formatCurrency(data.sma50, 'USD')],
+                ['200D Moving Average', formatCurrency(indicators?.SMA200, 'USD')],
+                ['Support Level', formatPrimaryLevel(structure?.support)],
+                ['Resistance Level', formatPrimaryLevel(structure?.resistance)],
+              ]}
+            />
+          </section>
         </aside>
       </div>
       <section className="technical-snapshot-section" aria-label="Technical snapshot">
-        <h3 className="technical-snapshot-title">Technical Snapshot</h3>
         <div className="technical-snapshot-panels">
           <article className="snapshot-panel">
             <header className="snapshot-panel-head">
@@ -1074,8 +1267,8 @@ function TechnicalSection({
               </span>
             </header>
             <div className="snapshot-tiles-grid">
-              {snapshotTiles.map((tile) => (
-                <SnapshotMetricTile key={tile.key} tile={tile} />
+              {snapshotTiles.map((tile, index) => (
+                <SnapshotMetricTile key={tile.key} tile={tile} index={index} />
               ))}
             </div>
           </article>
@@ -1247,7 +1440,13 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
   )
 }
 
-function SnapshotMetricTile({ tile }: { tile: TechnicalSnapshotRow }) {
+function SnapshotMetricTile({
+  tile,
+  index,
+}: {
+  tile: TechnicalSnapshotRow
+  index: number
+}) {
   const animatedValue = useAnimatedNumber(tile.numeric?.value ?? null, 800)
   const animatedProgress = useAnimatedNumber(tile.progressPercent, 800)
   const valueLabel =
@@ -1256,7 +1455,10 @@ function SnapshotMetricTile({ tile }: { tile: TechnicalSnapshotRow }) {
       : tile.value
 
   return (
-    <article className={`snapshot-tile tone-${tile.tone}`}>
+    <article
+      className={`snapshot-tile snapshot-tile-enter tone-${tile.tone}`}
+      style={{ animationDelay: `${80 + index * 45}ms` }}
+    >
       <p className="snapshot-tile-label">{tile.metric}</p>
       <div className="snapshot-tile-value-row">
         <p className="snapshot-tile-value">{valueLabel}</p>
@@ -1654,6 +1856,11 @@ function renderSection(
           selectedPeriod={selectedPeriod}
           llmSummary={llmSections.technical}
           ticker={ticker}
+          companyName={
+            analysis.fundamental?.data?.shortName ??
+            analysis.fundamental?.data?.longName ??
+            ''
+          }
           beta={analysis.fundamental?.data?.beta ?? null}
         />
       )
