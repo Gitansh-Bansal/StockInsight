@@ -1477,6 +1477,13 @@ type SentimentSectionProps = {
 }
 
 function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
+  const HEADLINES_BATCH_SIZE = 15
+  const [headlineQuery, setHeadlineQuery] = useState('')
+  const [headlineToneFilter, setHeadlineToneFilter] = useState<
+    'all' | 'positive' | 'neutral' | 'negative'
+  >('all')
+  const [visibleHeadlineCount, setVisibleHeadlineCount] = useState(HEADLINES_BATCH_SIZE)
+
   if (!result) {
     return (
       <UnavailablePanel title="Sentiment Analysis">
@@ -1488,6 +1495,48 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
   const headlines: SentimentHeadline[] = result.headlines
   const summary = llmSummary?.trim() || summarizeScore(result.score, 'sentiment')
   const sentimentSummary = parseSentimentSummary(summary)
+  const overallBand = scoreBand(result.score)
+  const overallBandTone =
+    overallBand === 'Bullish'
+      ? 'positive'
+      : overallBand === 'Bearish'
+        ? 'negative'
+        : 'neutral'
+  const scoreValue = Number.isFinite(result.score)
+    ? Math.max(0, Math.min(100, result.score))
+    : 0
+  const meterRadius = 46
+  const meterCircumference = 2 * Math.PI * meterRadius
+  const meterDashOffset = meterCircumference * (1 - scoreValue / 100)
+  const sentimentCounts = headlines.reduce(
+    (counts, headline) => {
+      const tone = sentimentSignalTone(headline.sentiment)
+      counts[tone] += 1
+      return counts
+    },
+    {
+      positive: 0,
+      neutral: 0,
+      negative: 0,
+    } as Record<'positive' | 'neutral' | 'negative', number>,
+  )
+  const filteredHeadlines = useMemo(() => {
+    const query = headlineQuery.trim().toLowerCase()
+    return headlines.filter((headline) => {
+      const tone = sentimentSignalTone(headline.sentiment)
+      if (headlineToneFilter !== 'all' && tone !== headlineToneFilter) {
+        return false
+      }
+      if (!query) {
+        return true
+      }
+      const title = (headline.title || '').toLowerCase()
+      const source = (headline.source || headline.apiSource || '').toLowerCase()
+      return title.includes(query) || source.includes(query)
+    })
+  }, [headlineQuery, headlineToneFilter, headlines])
+  const visibleHeadlines = filteredHeadlines.slice(0, visibleHeadlineCount)
+  const hasMoreHeadlines = visibleHeadlineCount < filteredHeadlines.length
 
   return (
     <article className="panel reveal">
@@ -1495,53 +1544,168 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
         <h2>Sentiment Analysis</h2>
         <span className="score-tag">{formatScore(result.score)}</span>
       </header>
-      <h3>Main Insights from news headlines</h3>
       {sentimentSummary.insights.length > 0 || sentimentSummary.summary ? (
         <div className="sentiment-summary">
           {sentimentSummary.insights.length > 0 && (
-            <ul className="analysis-bullets">
-              {sentimentSummary.insights.map((item, index) => (
-                <li key={`${item}-${index}`}>{item}</li>
-              ))}
-            </ul>
+            <section className="sentiment-summary-card">
+              <h3>Main Insights from news headlines</h3>
+              <ul className="analysis-bullets">
+                {sentimentSummary.insights.map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ul>
+            </section>
           )}
           {sentimentSummary.summary && (
-            <>
+            <section className="sentiment-summary-card">
               <h3>Summary</h3>
               <p className="analysis-copy">{sentimentSummary.summary}</p>
-            </>
+            </section>
           )}
         </div>
       ) : (
         <p className="analysis-copy">{summary}</p>
       )}
-      <h3>Data used</h3>
-      <MetricList
-        rows={[
-          ['Headline count used', `${result.data.count}`],
-          ['Aggregate sentiment score', formatScore(result.score)],
-          ['Signal band', scoreBand(result.score)],
-        ]}
-      />
+      <div className="sentiment-metrics-grid">
+        <section className="sentiment-summary-card sentiment-overview-card">
+          <div className="sentiment-overview-split">
+            <div className="sentiment-meter-wrap">
+              <div
+                className={`sentiment-score-meter tone-${overallBandTone}`}
+                aria-label={`Overall sentiment score ${formatScore(result.score)}`}
+                role="img"
+              >
+                <svg
+                  className="sentiment-score-meter-svg"
+                  viewBox="0 0 120 120"
+                  aria-hidden="true"
+                >
+                  <circle
+                    className="sentiment-score-meter-track"
+                    cx="60"
+                    cy="60"
+                    r={meterRadius}
+                  />
+                  <circle
+                    className="sentiment-score-meter-progress"
+                    cx="60"
+                    cy="60"
+                    r={meterRadius}
+                    strokeDasharray={meterCircumference}
+                    strokeDashoffset={meterDashOffset}
+                  />
+                </svg>
+                <div className="sentiment-score-meter-inner">
+                  <strong className="sentiment-score-meter-value">
+                    {formatScore(result.score)}
+                  </strong>
+                  <span className={`sentiment-meter-band tone-${overallBandTone}`}>
+                    {overallBand}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <dl className="sentiment-count-list">
+              <div>
+                <dt>Positive headlines</dt>
+                <dd>{sentimentCounts.positive}</dd>
+              </div>
+              <div>
+                <dt>Neutral headlines</dt>
+                <dd>{sentimentCounts.neutral}</dd>
+              </div>
+              <div>
+                <dt>Negative headlines</dt>
+                <dd>{sentimentCounts.negative}</dd>
+              </div>
+            </dl>
+          </div>
+        </section>
+      </div>
+
+      <div className="headline-filters">
+        <input
+          className="headline-search-input"
+          value={headlineQuery}
+          onChange={(event) => {
+            setHeadlineQuery(event.target.value)
+            setVisibleHeadlineCount(HEADLINES_BATCH_SIZE)
+          }}
+          placeholder="Search headlines or source"
+          aria-label="Search headlines"
+        />
+        <div className="headline-tone-filter" role="group" aria-label="Filter headlines">
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'positive', label: 'Positive' },
+            { key: 'neutral', label: 'Neutral' },
+            { key: 'negative', label: 'Negative' },
+          ].map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={headlineToneFilter === option.key ? 'active' : ''}
+              onClick={() => {
+                setHeadlineToneFilter(
+                  option.key as 'all' | 'positive' | 'neutral' | 'negative',
+                )
+                setVisibleHeadlineCount(HEADLINES_BATCH_SIZE)
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="headline-filter-count">
+          Showing {Math.min(visibleHeadlines.length, filteredHeadlines.length)} of{' '}
+          {filteredHeadlines.length} filtered headlines
+        </p>
+      </div>
 
       <div className="headline-list">
         {headlines.length === 0 && <p>No headlines returned from the news sources.</p>}
-        {headlines.map((headline, index) => (
-          <article className="headline-item" key={`${headline.title}-${index}`}>
-            <div className="headline-row">
-              {headline.link ? (
-                <a href={headline.link} target="_blank" rel="noreferrer">
-                  {headline.title}
-                </a>
-              ) : (
-                <p>{headline.title}</p>
-              )}
-              <span className="headline-time">
-                {formatHeadlineTimestamp(resolveHeadlineTimestamp(headline))}
-              </span>
-            </div>
-          </article>
-        ))}
+        {headlines.length > 0 && filteredHeadlines.length === 0 && (
+          <p>No headlines match the current filters.</p>
+        )}
+        {visibleHeadlines.map((headline, index) => {
+          const signalTone = sentimentSignalTone(headline.sentiment)
+          return (
+            <article className="headline-item" key={`${headline.title}-${index}`}>
+              <div className="headline-row">
+                {headline.link ? (
+                  <a href={headline.link} target="_blank" rel="noreferrer">
+                    {headline.title}
+                  </a>
+                ) : (
+                  <p>{headline.title}</p>
+                )}
+                <div className="headline-meta">
+                  <span
+                    className={`headline-signal tone-${signalTone}`}
+                    aria-label={`${signalTone} sentiment`}
+                    title={`${signalTone} sentiment`}
+                  />
+                  <span className="headline-time">
+                    {formatHeadlineTimestamp(resolveHeadlineTimestamp(headline))}
+                  </span>
+                </div>
+              </div>
+            </article>
+          )
+        })}
+        {hasMoreHeadlines && (
+          <div className="headline-actions">
+            <button
+              type="button"
+              className="headline-show-more"
+              onClick={() =>
+                setVisibleHeadlineCount((count) => count + HEADLINES_BATCH_SIZE)
+              }
+            >
+              Show more
+            </button>
+          </div>
+        )}
       </div>
     </article>
   )
@@ -3509,6 +3673,17 @@ function resolveHeadlineTimestamp(headline: SentimentHeadline): string | undefin
   return undefined
 }
 
+function sentimentSignalTone(value: string | undefined): 'positive' | 'neutral' | 'negative' {
+  const normalized = (value ?? '').trim().toLowerCase()
+  if (normalized.includes('positive') || normalized.includes('bullish')) {
+    return 'positive'
+  }
+  if (normalized.includes('negative') || normalized.includes('bearish')) {
+    return 'negative'
+  }
+  return 'neutral'
+}
+
 
 function summarizeScore(
   score: number,
@@ -3539,8 +3714,8 @@ function extractBulletPoints(raw: string): string[] {
     return []
   }
 
-  // Strict bullet boundary: only ". -" and line-start "- ".
-  const normalizedText = text.replace(/\. (?=-\s+\S)/g, '.\n')
+  // Strict bullet boundary: only ". -", ".-", and line-start "- ".
+  const normalizedText = text.replace(/\. ?(?=-\s+\S)/g, '.\n')
   const firstMarkerPattern = /(^|\n)-\s+\S/m
   const firstMarkerMatch = firstMarkerPattern.exec(normalizedText)
   const leadingText = firstMarkerMatch

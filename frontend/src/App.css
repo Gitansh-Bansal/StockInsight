@@ -298,7 +298,168 @@
 
 .sentiment-summary {
   display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
+}
+
+.sentiment-summary-card {
+  display: grid;
   gap: 0.65rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.sentiment-summary-card h3 {
+  margin: 0;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.95rem;
+}
+
+.sentiment-summary-card .analysis-copy,
+.sentiment-summary-card .analysis-bullets {
+  color: var(--muted);
+}
+
+.sentiment-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+.sentiment-overview-card {
+  align-content: start;
+}
+
+.sentiment-overview-split {
+  display: grid;
+  grid-template-columns: 138px minmax(0, 1fr);
+  gap: 0.95rem;
+  align-items: center;
+}
+
+.sentiment-meter-wrap {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+}
+
+.sentiment-score-meter {
+  --meter-tone: #ca8a04;
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+}
+
+.sentiment-score-meter.tone-positive {
+  --meter-tone: #16a34a;
+}
+
+.sentiment-score-meter.tone-neutral {
+  --meter-tone: #ca8a04;
+}
+
+.sentiment-score-meter.tone-negative {
+  --meter-tone: #dc2626;
+}
+
+.sentiment-score-meter-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.sentiment-score-meter-track,
+.sentiment-score-meter-progress {
+  fill: none;
+  stroke-width: 7;
+}
+
+.sentiment-score-meter-track {
+  stroke: color-mix(in hsl, var(--line) 86%, white 14%);
+}
+
+.sentiment-score-meter-progress {
+  stroke: var(--meter-tone);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 420ms ease;
+}
+
+.sentiment-score-meter-inner {
+  position: absolute;
+  inset: 18px;
+  border-radius: 999px;
+  border: none;
+  background: var(--card);
+  display: grid;
+  place-content: center;
+  gap: 0.2rem;
+  text-align: center;
+  box-shadow: none;
+}
+
+.sentiment-score-meter-value {
+  margin: 0;
+  font-family: var(--mono-font);
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.sentiment-meter-band {
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sentiment-meter-band.tone-positive {
+  color: #15803d;
+}
+
+.sentiment-meter-band.tone-neutral {
+  color: #a16207;
+}
+
+.sentiment-meter-band.tone-negative {
+  color: #b91c1c;
+}
+
+.sentiment-count-list {
+  display: grid;
+  margin: 0;
+  gap: 0.42rem;
+}
+
+.sentiment-count-list div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 0.42rem;
+}
+
+.sentiment-count-list dt {
+  margin: 0;
+  color: var(--muted);
+}
+
+.sentiment-count-list dd {
+  margin: 0;
+  font-family: var(--mono-font);
+  font-size: 0.9rem;
+  color: var(--ink);
+  font-weight: 700;
 }
 
 .analysis-bullets {
@@ -2141,9 +2302,86 @@ th {
   font-weight: 600;
 }
 
+.headline-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.6rem;
+  row-gap: 0.45rem;
+  align-items: center;
+}
+
+.headline-search-input {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.75rem;
+  background: color-mix(in hsl, var(--card) 72%, white 28%);
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-family: inherit;
+  padding: 0.62rem 0.78rem;
+}
+
+.headline-tone-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.headline-tone-filter button {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in hsl, var(--card) 72%, white 28%);
+  color: var(--ink);
+  padding: 0.34rem 0.68rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.headline-tone-filter button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.headline-filter-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  grid-column: 1 / -1;
+}
+
 .headline-list {
   display: grid;
   gap: 0.55rem;
+}
+
+.headline-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.35rem;
+}
+
+.headline-show-more {
+  border: 1px solid var(--line-strong);
+  border-radius: 0.75rem;
+  background: color-mix(in hsl, var(--card) 72%, white 28%);
+  color: var(--ink);
+  padding: 0.48rem 0.9rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.headline-show-more:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in hsl, var(--accent) 40%, var(--line-strong) 60%);
+  box-shadow: 0 8px 22px color-mix(in hsl, var(--accent) 20%, transparent);
 }
 
 .headline-item {
@@ -2158,6 +2396,42 @@ th {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   column-gap: 0.8rem;
+}
+
+.headline-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  justify-self: end;
+}
+
+.headline-signal {
+  width: 0.72rem;
+  height: 0.72rem;
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+  transform: translateY(0);
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in hsl, currentColor 16%, transparent);
+}
+
+.headline-signal.tone-positive {
+  color: #16a34a;
+  clip-path: polygon(50% 6%, 94% 94%, 6% 94%);
+}
+
+.headline-signal.tone-neutral {
+  color: #ca8a04;
+  width: 0.56rem;
+  height: 0.56rem;
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.headline-signal.tone-negative {
+  color: #dc2626;
+  clip-path: polygon(6% 6%, 94% 6%, 50% 94%);
 }
 
 .headline-item a,
@@ -2181,6 +2455,7 @@ th {
   text-align: right;
   color: var(--muted);
   font-size: 0.78rem;
+  line-height: 1;
 }
 
 .error-card {
@@ -2558,6 +2833,10 @@ th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .sentiment-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
   .technical-layout {
     grid-template-columns: 1fr;
   }
@@ -2629,6 +2908,22 @@ th {
     white-space: normal;
     justify-self: start;
     text-align: left;
+  }
+
+  .headline-meta {
+    justify-self: start;
+  }
+
+  .headline-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .headline-tone-filter {
+    justify-content: flex-start;
+  }
+
+  .headline-tone-filter button {
+    flex: 1 1 calc(50% - 0.45rem);
   }
 
   .snapshot-tiles-grid,
