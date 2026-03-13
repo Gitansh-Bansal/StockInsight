@@ -69,7 +69,6 @@ def _compute_verdict(overall_score: float) -> str:
 
 def run_full_analysis(
     ticker: str,
-    period: str = "1y",
     include_report: bool = True,
 ) -> dict[str, Any] | None:
     """
@@ -84,9 +83,8 @@ def run_full_analysis(
     analysis_started_perf = time.perf_counter()
     _timing_log(
         timing_logs_enabled,
-        "PROCESS_START full_analysis ticker=%s period=%s started_at=%s",
+        "PROCESS_START full_analysis ticker=%s started_at=%s",
         ticker,
-        period,
         analysis_started_at.isoformat(),
     )
 
@@ -111,17 +109,15 @@ def run_full_analysis(
     technical_started_perf = time.perf_counter()
     _timing_log(
         timing_logs_enabled,
-        "PROCESS_START technical ticker=%s period=%s started_at=%s",
+        "PROCESS_START technical ticker=%s started_at=%s",
         ticker,
-        period,
         technical_started_at.isoformat(),
     )
-    technical_result = get_technical_analysis(ticker, period=period)
+    technical_result = get_technical_analysis(ticker)
     _timing_log(
         timing_logs_enabled,
-        "PROCESS_END technical ticker=%s period=%s ended_at=%s duration_s=%.3f",
+        "PROCESS_END technical ticker=%s ended_at=%s duration_s=%.3f",
         ticker,
-        period,
         datetime.now(UTC).isoformat(),
         time.perf_counter() - technical_started_perf,
     )

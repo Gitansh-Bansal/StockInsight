@@ -165,8 +165,7 @@
   position: relative;
 }
 
-.search-field input,
-.period-control select {
+.search-field input {
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: 0.9rem;
@@ -177,23 +176,7 @@
 }
 
 .search-field input {
-  padding: 0.75rem 6.2rem 0.75rem 0.9rem;
-}
-
-.search-field select {
-  position: absolute;
-  top: 50%;
-  right: 0.35rem;
-  transform: translateY(-50%);
-  border: 1px solid var(--line-strong);
-  border-radius: 0.65rem;
-  background: white;
-  color: var(--ink);
-  font-size: 0.84rem;
-  font-family: inherit;
-  font-weight: 700;
-  padding: 0.36rem 0.45rem;
-  max-width: 5.1rem;
+  padding: 0.75rem 0.9rem;
 }
 
 .analysis-layout {
@@ -239,24 +222,6 @@
   background: var(--accent);
   border-color: var(--accent);
   color: white;
-}
-
-.period-control {
-  display: grid;
-  gap: 0.35rem;
-  width: 122px;
-}
-
-.period-control span {
-  font-size: 0.75rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-
-.period-control select {
-  appearance: none;
-  padding: 0.75rem 1.8rem 0.75rem 0.9rem;
 }
 
 .section-grid {
@@ -2912,10 +2877,6 @@ th {
 
   .chart-type-select {
     margin-left: 0;
-    width: 100%;
-  }
-
-  .period-control {
     width: 100%;
   }
 

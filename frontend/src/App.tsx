@@ -19,15 +19,6 @@ import type {
   TechnicalResult,
 } from './types'
 
-const PERIOD_OPTIONS = [
-  { label: '1M', value: '1mo' },
-  { label: '3M', value: '3mo' },
-  { label: '6M', value: '6mo' },
-  { label: '1Y', value: '1y' },
-  { label: '2Y', value: '2y' },
-  { label: '5Y', value: '5y' },
-]
-
 type AnalysisTab =
   | 'overview'
   | 'fundamental'
@@ -59,21 +50,17 @@ const decimalFormatter = new Intl.NumberFormat('en-US', {
 const currencyFormatterCache = new Map<string, Intl.NumberFormat>()
 
 function App() {
-  const { pathname, search, navigate } = usePathRouter()
+  const { pathname, navigate } = usePathRouter()
   const route = useMemo(() => parseRoute(pathname), [pathname])
-  const initialPeriod = useMemo(() => parsePeriodFromSearch(search), [search])
   const activeTicker = route.type === 'stock' ? route.ticker : null
 
   const handleSearch = useCallback(
-    (input: string, period: string) => {
+    (input: string) => {
       const ticker = normalizeTicker(input)
       if (!ticker) {
         return
       }
-      const chosenPeriod = normalizePeriod(period)
-      navigate(
-        `/stock/${encodeURIComponent(ticker)}/overview?period=${encodeURIComponent(chosenPeriod)}`,
-      )
+      navigate(`/stock/${encodeURIComponent(ticker)}/overview`)
     },
     [navigate],
   )
@@ -85,9 +72,8 @@ function App() {
   return (
     <div className="app-shell">
       <HeaderBar
-        key={`${activeTicker ?? 'home'}-${initialPeriod}`}
+        key={activeTicker ?? 'home'}
         initialSearch={activeTicker ?? ''}
-        initialPeriod={initialPeriod}
         isHome={route.type === 'home'}
         onSearch={handleSearch}
         onHome={goHome}
@@ -96,15 +82,10 @@ function App() {
       <main className="content">
         {route.type === 'stock' ? (
           <AnalysisPage
-            key={`${route.ticker}-${initialPeriod}`}
+            key={route.ticker}
             ticker={route.ticker}
-            initialPeriod={initialPeriod}
             tab={route.tab}
-            onTabChange={(tab) =>
-              navigate(
-                `/stock/${encodeURIComponent(route.ticker)}/${tab}?period=${encodeURIComponent(initialPeriod)}`,
-              )
-            }
+            onTabChange={(tab) => navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`)}
           />
         ) : (
           <HomePage onSearch={handleSearch} />
@@ -116,25 +97,22 @@ function App() {
 
 type HeaderBarProps = {
   initialSearch: string
-  initialPeriod: string
   isHome: boolean
-  onSearch: (ticker: string, period: string) => void
+  onSearch: (ticker: string) => void
   onHome: () => void
 }
 
 function HeaderBar({
   initialSearch,
-  initialPeriod,
   isHome,
   onSearch,
   onHome,
 }: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState(initialSearch)
-  const [periodValue, setPeriodValue] = useState(initialPeriod)
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onSearch(searchValue, periodValue)
+    onSearch(searchValue)
   }
 
   return (
@@ -158,17 +136,6 @@ function HeaderBar({
               placeholder="Search ticker (AAPL, MSFT, NVDA)"
               aria-label="Search ticker symbol"
             />
-            <select
-              value={periodValue}
-              onChange={(event) => setPeriodValue(event.target.value)}
-              aria-label="Select duration"
-            >
-              {PERIOD_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
           </div>
           <button type="submit">Search</button>
         </form>
@@ -178,16 +145,15 @@ function HeaderBar({
 }
 
 type HomePageProps = {
-  onSearch: (ticker: string, period: string) => void
+  onSearch: (ticker: string) => void
 }
 
 function HomePage({ onSearch }: HomePageProps) {
   const [tickerInput, setTickerInput] = useState('')
-  const [periodValue, setPeriodValue] = useState('1y')
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onSearch(tickerInput, periodValue)
+    onSearch(tickerInput)
   }
 
   return (
@@ -208,17 +174,6 @@ function HomePage({ onSearch }: HomePageProps) {
               placeholder="Enter ticker"
               aria-label="Ticker symbol input"
             />
-            <select
-              value={periodValue}
-              onChange={(event) => setPeriodValue(event.target.value)}
-              aria-label="Select duration"
-            >
-              {PERIOD_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
           </div>
           <button type="submit">Open Analysis</button>
         </form>
@@ -230,13 +185,11 @@ function HomePage({ onSearch }: HomePageProps) {
 
 type AnalysisPageProps = {
   ticker: string
-  initialPeriod: string
   tab: AnalysisTab
   onTabChange: (tab: AnalysisTab) => void
 }
 
-function AnalysisPage({ ticker, initialPeriod, tab, onTabChange }: AnalysisPageProps) {
-  const [period, setPeriod] = useState(initialPeriod)
+function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -245,7 +198,7 @@ function AnalysisPage({ ticker, initialPeriod, tab, onTabChange }: AnalysisPageP
   useEffect(() => {
     let cancelled = false
 
-    fetchAnalysis(ticker, period)
+    fetchAnalysis(ticker)
       .then((payload) => {
         if (!cancelled) {
           setAnalysis(payload)
@@ -268,7 +221,7 @@ function AnalysisPage({ ticker, initialPeriod, tab, onTabChange }: AnalysisPageP
     return () => {
       cancelled = true
     }
-  }, [period, retryKey, ticker])
+  }, [retryKey, ticker])
 
   const companyName = useMemo(() => {
     const data = analysis?.fundamental?.data
@@ -285,24 +238,6 @@ function AnalysisPage({ ticker, initialPeriod, tab, onTabChange }: AnalysisPageP
           <p className="kicker">Ticker Detail</p>
           <h1>{companyName ? `${companyName} (${ticker})` : ticker}</h1>
         </div>
-        <label className="period-control">
-          <span>Period</span>
-          <select
-            value={period}
-            onChange={(event) => {
-              setIsLoading(true)
-              setError('')
-              setPeriod(event.target.value)
-            }}
-            aria-label="Select analysis period"
-          >
-            {PERIOD_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
 
       <nav className="analysis-tabs reveal" aria-label="Analysis sections">
@@ -337,7 +272,7 @@ function AnalysisPage({ ticker, initialPeriod, tab, onTabChange }: AnalysisPageP
         </div>
       )}
 
-      {!isLoading && !error && analysis && renderSection(tab, analysis, period, ticker)}
+      {!isLoading && !error && analysis && renderSection(tab, analysis, ticker)}
     </section>
   )
 }
@@ -750,7 +685,6 @@ const CHART_DURATION_OPTIONS = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'ALL'
 
 type TechnicalSectionProps = {
   result: AnalysisResponse['technical']
-  selectedPeriod: string
   llmSummary?: string
   ticker: string
   companyName?: string
@@ -760,7 +694,6 @@ type TechnicalSectionProps = {
 
 function TechnicalSection({
   result,
-  selectedPeriod,
   llmSummary,
   ticker,
   companyName,
@@ -775,7 +708,7 @@ function TechnicalSection({
     )
   }
 
-  const data = resolveTechnicalData(result, selectedPeriod)
+  const data = resolveTechnicalData(result)
   const technicalCurrency = normalizeCurrencyCode(
     data.currency ?? result.currency ?? displayCurrency,
   )
@@ -1280,7 +1213,7 @@ function TechnicalSection({
         chart.remove()
       }
     }
-  }, [activeChartRows, tradingViewSymbol, selectedPeriod, chartType, chartDuration, activeCurrency])
+  }, [activeChartRows, tradingViewSymbol, chartType, chartDuration, activeCurrency])
 
   return (
     <article className="panel reveal">
@@ -2172,7 +2105,6 @@ function renderMarkdownInline(text: string, keyPrefix: string) {
 function renderSection(
   tab: AnalysisTab,
   analysis: AnalysisResponse,
-  selectedPeriod: string,
   ticker: string,
 ) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
@@ -2191,7 +2123,6 @@ function renderSection(
       return (
         <TechnicalSection
           result={analysis.technical}
-          selectedPeriod={selectedPeriod}
           llmSummary={llmSections.technical}
           ticker={ticker}
           companyName={
@@ -2341,20 +2272,6 @@ function parseRoute(pathname: string): AppRoute {
   } catch {
     return { type: 'home' }
   }
-}
-
-function parsePeriodFromSearch(search: string): string {
-  const params = new URLSearchParams(search)
-  const raw = params.get('period') ?? '1y'
-  return normalizePeriod(raw)
-}
-
-function normalizePeriod(value: string): string {
-  const allowed = new Set(PERIOD_OPTIONS.map((option) => option.value))
-  if (allowed.has(value)) {
-    return value
-  }
-  return '1y'
 }
 
 function normalizeTab(value: string): AnalysisTab {
@@ -3912,14 +3829,12 @@ function parseSentimentSummary(raw: string): { insights: string[]; summary: stri
 
 function resolveTechnicalData(
   result: TechnicalResult,
-  selectedPeriod: string,
 ): TechnicalData {
   const legacy = result.data
   const indicators = result.indicators
 
   return {
     symbol: legacy?.symbol ?? result.symbol ?? '',
-    period: legacy?.period ?? selectedPeriod,
     currency: legacy?.currency ?? result.currency,
     ohlcv: legacy?.ohlcv ?? result.ohlcv ?? [],
     lastClose: legacy?.lastClose ?? indicators?.close ?? null,

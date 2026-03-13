@@ -145,7 +145,6 @@ def _extract_technical_prompt_data(
 
     return {
         "symbol": technical_data.get("symbol") or technical_payload.get("symbol"),
-        "period": technical_data.get("period"),
         "trend": technical_payload.get("trend"),
         "signal": technical_payload.get("signal"),
         "reasons": technical_payload.get("reasons") or [],
@@ -238,7 +237,6 @@ def _build_structured_prompt(
         },
         "technicalData": {
             "symbol": technical_data.get("symbol"),
-            "period": technical_data.get("period"),
             "trend": technical_data.get("trend"),
             "signal": technical_data.get("signal"),
             "reasons": technical_data.get("reasons"),

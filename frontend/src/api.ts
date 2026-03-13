@@ -16,10 +16,9 @@ function apiUrl(path: string): string {
 
 export async function fetchAnalysis(
   ticker: string,
-  period: string,
 ): Promise<AnalysisResponse> {
   const cleanTicker = ticker.trim().toUpperCase()
-  const requestKey = `${cleanTicker}|${period}`
+  const requestKey = cleanTicker
   const existingRequest = inFlightAnalysisRequests.get(requestKey)
   if (existingRequest) {
     return existingRequest
@@ -27,7 +26,7 @@ export async function fetchAnalysis(
 
   const requestPromise = (async () => {
     const url = apiUrl(
-      `/api/analysis/${encodeURIComponent(cleanTicker)}?period=${encodeURIComponent(period)}&include_report=true`,
+      `/api/analysis/${encodeURIComponent(cleanTicker)}?include_report=true`,
     )
 
     const response = await fetch(url)

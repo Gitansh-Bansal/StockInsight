@@ -489,13 +489,16 @@ def get_chart_data(ticker: str, duration: str) -> dict[str, Any]:
         logger.exception("Chart data fetch failed for %s duration=%s: %s", ticker, duration, e)
         return {"ohlcv": [], "currency": "USD"}
 
-def get_technical_analysis(ticker: str, period: str = "1y") -> dict | None:
+DEFAULT_ANALYSIS_PERIOD = "1y"
+
+
+def get_technical_analysis(ticker: str) -> dict | None:
     try:
         ticker = ticker.upper().strip()
         t = yf.Ticker(ticker)
         currency = _resolve_ticker_currency(t)
 
-        df = _load_history_frame(t, period)
+        df = _load_history_frame(t, DEFAULT_ANALYSIS_PERIOD)
 
         if df is None or df.empty:
             return None
@@ -567,7 +570,7 @@ def get_technical_analysis(ticker: str, period: str = "1y") -> dict | None:
         # =========================
         # OHLCV for Chart (last 252)
         # =========================
-        max_points = PERIOD_MAX_POINTS.get(period, 252)
+        max_points = PERIOD_MAX_POINTS.get(DEFAULT_ANALYSIS_PERIOD, 252)
         hist_tail = df.tail(max_points)
 
         ohlcv = [

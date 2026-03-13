@@ -75,7 +75,6 @@ export interface OhlcvPoint {
 
 export interface TechnicalData {
   symbol: string
-  period: string
   currency?: string
   ohlcv: OhlcvPoint[]
   lastClose: number | null
