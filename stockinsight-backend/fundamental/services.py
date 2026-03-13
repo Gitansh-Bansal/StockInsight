@@ -249,20 +249,37 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
 
         # Chart Trends Fetching
         try:
+            import pandas as pd
+
+            def _find_row_value(df, col, *label_options):
+                """Try multiple row label names and return the first valid value."""
+                for label in label_options:
+                    if label in df.index:
+                        val = df.loc[label, col]
+                        if pd.notna(val):
+                            return float(val)
+                return None
+
             inc = t.income_stmt
             revenue_trend = []
             margins_trend = []
             if inc is not None and not inc.empty:
+                logger.info("Income statement index labels: %s", list(inc.index))
                 for col in list(inc.columns)[:5]:
-                    year = col.year
-                    rev = inc.loc['Total Revenue', col] if 'Total Revenue' in inc.index else None
-                    net_inc = inc.loc['Net Income', col] if 'Net Income' in inc.index else None
-                    op_inc = inc.loc['Operating Income', col] if 'Operating Income' in inc.index else None
+                    year = col.year if hasattr(col, 'year') else str(col)
                     
-                    import pandas as pd
-                    rev_val = float(rev) if pd.notna(rev) else None
-                    net_val = float(net_inc) if pd.notna(net_inc) else None
-                    op_val = float(op_inc) if pd.notna(op_inc) else None
+                    rev_val = _find_row_value(inc, col,
+                        'Total Revenue', 'TotalRevenue', 'Revenue',
+                        'Total Net Revenue', 'Gross Revenue')
+                    net_val = _find_row_value(inc, col,
+                        'Net Income', 'NetIncome',
+                        'Net Income Common Stockholders',
+                        'Net Income Common Stockholders Including Extraordinary Items',
+                        'NetIncomeCommonStockholders')
+                    op_val = _find_row_value(inc, col,
+                        'Operating Income', 'OperatingIncome',
+                        'Operating Revenue', 'EBIT',
+                        'Earnings Before Interest And Taxes')
                     
                     revenue_trend.append({"year": year, "revenue": rev_val, "netProfit": net_val})
                     
@@ -283,13 +300,16 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             cf = t.cashflow
             cashflow_trend = []
             if cf is not None and not cf.empty:
+                logger.info("Cashflow index labels: %s", list(cf.index))
                 for col in list(cf.columns)[:5]:
-                    year = col.year
-                    op_cf = cf.loc['Operating Cash Flow', col] if 'Operating Cash Flow' in cf.index else None
-                    fcf = cf.loc['Free Cash Flow', col] if 'Free Cash Flow' in cf.index else None
-                    import pandas as pd
-                    op_val = float(op_cf) if pd.notna(op_cf) else None
-                    fcf_val = float(fcf) if pd.notna(fcf) else None
+                    year = col.year if hasattr(col, 'year') else str(col)
+                    op_val = _find_row_value(cf, col,
+                        'Operating Cash Flow', 'OperatingCashFlow',
+                        'Cash Flow From Continuing Operating Activities',
+                        'Total Cash From Operating Activities')
+                    fcf_val = _find_row_value(cf, col,
+                        'Free Cash Flow', 'FreeCashFlow',
+                        'Free Cash Flow From Equity')
                     cashflow_trend.append({"year": year, "operatingCashFlow": op_val, "freeCashFlow": fcf_val})
         except Exception as e:
             logger.warning("Error fetching cashflow: %s", e)

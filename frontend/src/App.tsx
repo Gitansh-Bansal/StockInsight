@@ -427,6 +427,22 @@ function FundamentalSection({
   const data: FundamentalData = result.data
   const summary = llmSummary?.trim() || summarizeScore(result.score, 'fundamental')
 
+  const fundScorePercent = isFiniteNumber(result.score) ? clampPercent(result.score) : 50
+  const fundScoreZone = isFiniteNumber(result.score)
+    ? result.score < 30 ? 'strong-bearish'
+      : result.score < 45 ? 'bearish'
+        : result.score < 55 ? 'neutral'
+          : result.score < 70 ? 'bullish'
+            : 'strong-bullish'
+    : 'neutral'
+  const fundSignalLabel = isFiniteNumber(result.score)
+    ? result.score < 30 ? 'Weak'
+      : result.score < 45 ? 'Below Avg'
+        : result.score < 55 ? 'Average'
+          : result.score < 70 ? 'Good'
+            : 'Strong'
+    : 'N/A'
+
   return (
     <article className="panel reveal">
       <header className="panel-head">
@@ -434,23 +450,59 @@ function FundamentalSection({
         <span className="score-tag">{formatScore(result.score)}</span>
       </header>
       <p className="analysis-copy">{summary}</p>
-      
+
       <div className="market-hero">
-        <div className="hero-metric">
+        <div className="fund-hero-metric">
           <span className="label">P/E Ratio</span>
           <span className="val">{formatNumber(data.trailingPE)}</span>
         </div>
-        <div className="hero-metric">
+        <div className="fund-hero-metric">
           <span className="label">Market Cap</span>
           <span className="val">{data.marketCap ? compactFormatter.format(data.marketCap) : 'N/A'}</span>
         </div>
-        <div className="hero-metric">
+        <div className="fund-hero-metric">
           <span className="label">Ent. Value</span>
           <span className="val">{data.enterpriseValue ? compactFormatter.format(data.enterpriseValue) : 'N/A'}</span>
         </div>
-        <div className="hero-metric">
+        <div className="fund-hero-metric">
           <span className="label">Beta</span>
           <span className="val">{formatNumber(data.beta)}</span>
+        </div>
+        <div className={`fundamental-score-card tone-${scoreToTone(result.score)}`}>
+          <h3 style={{ margin: 0, fontSize: '0.82rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>Fundamental Score</h3>
+          <div className={`technical-score-meter-wrap zone-${fundScoreZone}`}>
+            <div className="technical-score-meter-head">
+              <span className="technical-score-signal">{fundSignalLabel}</span>
+              <strong className="technical-score-value">{formatScore(result.score)}</strong>
+            </div>
+            <div className="technical-score-meter-visual" aria-hidden="true">
+              <div className="technical-score-meter-track">
+                <div className="technical-score-meter-segments">
+                  <span className="segment strong-bearish" />
+                  <span className="segment bearish" />
+                  <span className="segment neutral" />
+                  <span className="segment bullish" />
+                  <span className="segment strong-bullish" />
+                </div>
+                <span
+                  className="technical-score-meter-marker"
+                  style={{ left: `${fundScorePercent}%` }}
+                />
+              </div>
+              <div className="technical-score-meter-scale">
+                {[0, 25, 50, 75, 100].map((tick) => (
+                  <span
+                    key={`fund-tick-${tick}`}
+                    className={`technical-score-meter-tick${tick === 0 ? ' edge-start' : ''}${tick === 100 ? ' edge-end' : ''}`}
+                    style={{ left: `${tick}%` }}
+                  >
+                    <span className="technical-score-meter-tick-mark" />
+                    <span className="technical-score-meter-tick-label">{tick}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
