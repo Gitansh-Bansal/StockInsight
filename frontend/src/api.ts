@@ -1,4 +1,4 @@
-import type { AnalysisResponse } from './types'
+import type { AnalysisResponse, OhlcvPoint } from './types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
   /\/$/,
@@ -50,7 +50,7 @@ export async function fetchAnalysis(
 export async function fetchChartData(
   ticker: string,
   duration: string,
-): Promise<{ ohlcv: any[] }> {
+): Promise<{ ohlcv: OhlcvPoint[]; currency?: string }> {
   const url = apiUrl(
     `/api/analysis/chart/${encodeURIComponent(ticker.trim().toUpperCase())}?duration=${encodeURIComponent(duration)}`,
   )

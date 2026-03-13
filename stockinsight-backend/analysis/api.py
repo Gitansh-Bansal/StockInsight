@@ -39,5 +39,4 @@ def fetch_chart(
     """
     Fetch specific fine-grained chart data based on duration.
     """
-    data = get_chart_data(ticker=ticker, duration=duration)
-    return {"ohlcv": data}
+    return get_chart_data(ticker=ticker, duration=duration)

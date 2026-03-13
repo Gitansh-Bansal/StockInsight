@@ -76,6 +76,7 @@ export interface OhlcvPoint {
 export interface TechnicalData {
   symbol: string
   period: string
+  currency?: string
   ohlcv: OhlcvPoint[]
   lastClose: number | null
   sma20: number | null
@@ -111,6 +112,7 @@ export interface TechnicalResult {
   score: number
   data?: TechnicalData
   symbol?: string
+  currency?: string
   trend?: string
   signal?: string
   regime?: string

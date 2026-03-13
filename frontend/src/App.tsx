@@ -56,11 +56,7 @@ const decimalFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
 })
 
-const usdFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 2,
-})
+const currencyFormatterCache = new Map<string, Intl.NumberFormat>()
 
 function App() {
   const { pathname, search, navigate } = usePathRouter()
@@ -388,6 +384,7 @@ function OverviewSection({ overview, llmSummary }: OverviewSectionProps) {
 type FundamentalSectionProps = {
   result: AnalysisResponse['fundamental']
   llmSummary?: string
+  displayCurrency: string
 }
 
 function StackedBarBurn({ labelA, labelB, valA, valB, colorA, colorB }: { labelA: string, labelB: string, valA?: number, valB?: number, colorA: string, colorB: string }) {
@@ -414,7 +411,11 @@ function StackedBarBurn({ labelA, labelB, valA, valB, colorA, colorB }: { labelA
 
 const PIE_COLORS = ['#2563eb', '#10b981', '#cbd5e1']
 
-function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
+function FundamentalSection({
+  result,
+  llmSummary,
+  displayCurrency,
+}: FundamentalSectionProps) {
   if (!result) {
     return (
       <UnavailablePanel title="Fundamental Analysis">
@@ -580,7 +581,7 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
                   <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={60} />
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  <RechartsTooltip formatter={(val: any) => usdFormatter.format(val)} cursor={{fill: 'rgba(0,0,0,0.05)'}} />
+                  <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} cursor={{fill: 'rgba(0,0,0,0.05)'}} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                   <Bar dataKey="revenue" name="Revenue" fill="#94a3b8" radius={[4,4,0,0]} />
                   <Bar dataKey="netProfit" name="Net Profit" fill="#2563eb" radius={[4,4,0,0]} />
@@ -610,7 +611,7 @@ function FundamentalSection({ result, llmSummary }: FundamentalSectionProps) {
                   <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={60} />
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  <RechartsTooltip formatter={(val: any) => usdFormatter.format(val)} />
+                  <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                   <Area type="monotone" dataKey="operatingCashFlow" name="Op Cash Flow" stroke="#2563eb" fillOpacity={1} fill="url(#colorOp)" stackId="1" />
                   <Area type="monotone" dataKey="freeCashFlow" name="Free Cash Flow" stroke="#10b981" fillOpacity={1} fill="url(#colorFcf)" stackId="1" />
@@ -702,6 +703,7 @@ type TechnicalSectionProps = {
   ticker: string
   companyName?: string
   beta: number | null
+  displayCurrency: string
 }
 
 function TechnicalSection({
@@ -711,6 +713,7 @@ function TechnicalSection({
   ticker,
   companyName,
   beta,
+  displayCurrency,
 }: TechnicalSectionProps) {
   if (!result) {
     return (
@@ -721,6 +724,9 @@ function TechnicalSection({
   }
 
   const data = resolveTechnicalData(result, selectedPeriod)
+  const technicalCurrency = normalizeCurrencyCode(
+    data.currency ?? result.currency ?? displayCurrency,
+  )
   const trendText =
     llmSummary?.trim() || describeTechnicalSignal(result) || describeTrend(data)
   const technicalBullets = extractBulletPoints(trendText)
@@ -907,34 +913,34 @@ function TechnicalSection({
     {
       key: 'sma20',
       metric: '20 Day SMA',
-      value: formatCurrency(data.sma20, 'USD'),
+      value: formatCurrency(data.sma20, technicalCurrency),
       status: sma20Position.label,
       tone: sma20Position.tone,
       progressPercent: resolveMovingAverageProgress(data.sma20, currentPrice),
       numeric: isFiniteNumber(data.sma20)
-        ? { value: data.sma20, format: 'currency', decimals: 2 }
+        ? { value: data.sma20, format: 'currency', decimals: 2, currency: technicalCurrency }
         : undefined,
     },
     {
       key: 'sma50',
       metric: '50 Day SMA',
-      value: formatCurrency(data.sma50, 'USD'),
+      value: formatCurrency(data.sma50, technicalCurrency),
       status: sma50Position.label,
       tone: sma50Position.tone,
       progressPercent: resolveMovingAverageProgress(data.sma50, currentPrice),
       numeric: isFiniteNumber(data.sma50)
-        ? { value: data.sma50, format: 'currency', decimals: 2 }
+        ? { value: data.sma50, format: 'currency', decimals: 2, currency: technicalCurrency }
         : undefined,
     },
     {
       key: 'sma200',
       metric: '200 Day SMA',
-      value: formatCurrency(sma200, 'USD'),
+      value: formatCurrency(sma200, technicalCurrency),
       status: sma200Position.label,
       tone: sma200Position.tone,
       progressPercent: resolveMovingAverageProgress(sma200, currentPrice),
       numeric: isFiniteNumber(sma200)
-        ? { value: sma200, format: 'currency', decimals: 2 }
+        ? { value: sma200, format: 'currency', decimals: 2, currency: technicalCurrency }
         : undefined,
     },
   ]
@@ -944,6 +950,7 @@ function TechnicalSection({
   const [chartType, setChartType] = useState<ChartType>('candle')
   const [chartDuration, setChartDuration] = useState<string>('1M')
   const [chartData, setChartData] = useState<any[]>([])
+  const [chartCurrency, setChartCurrency] = useState<string | null>(null)
   const [isChartLoading, setIsChartLoading] = useState(false)
   const [chartFetchError, setChartFetchError] = useState('')
   const [isChartReady, setIsChartReady] = useState(false)
@@ -988,6 +995,7 @@ function TechnicalSection({
     }
     return isFiniteNumber(currentPrice) ? currentPrice : null
   }, [activeChartRows, currentPrice])
+  const activeCurrency = chartCurrency ?? technicalCurrency
   const technicalScoreTone = scoreToTone(result.score)
   const technicalScorePercent = isFiniteNumber(result.score)
     ? clampPercent(result.score)
@@ -1032,12 +1040,16 @@ function TechnicalSection({
     let cancelled = false
     setIsChartLoading(true)
     setChartFetchError('')
+    setChartCurrency(null)
 
     import('./api')
       .then(({ fetchChartData }) => fetchChartData(ticker, chartDuration))
       .then((payload) => {
         if (!cancelled) {
           setChartData(payload.ohlcv || [])
+          setChartCurrency(
+            payload.currency ? normalizeCurrencyCode(payload.currency) : null,
+          )
         }
       })
       .catch((err: unknown) => {
@@ -1110,6 +1122,7 @@ function TechnicalSection({
         },
         localization: {
           locale: 'en-US',
+          priceFormatter: (price: number) => formatCurrency(price, activeCurrency),
         },
         handleScroll: false,
         handleScale: false,
@@ -1215,7 +1228,7 @@ function TechnicalSection({
         chart.remove()
       }
     }
-  }, [activeChartRows, tradingViewSymbol, selectedPeriod, chartType, chartDuration])
+  }, [activeChartRows, tradingViewSymbol, selectedPeriod, chartType, chartDuration, activeCurrency])
 
   return (
     <article className="panel reveal">
@@ -1241,7 +1254,7 @@ function TechnicalSection({
                   <h3>{chartTitle}</h3>
                   <span className="chart-live-price">
                     <span className="chart-live-dot" aria-hidden="true" />
-                    {livePrice !== null ? formatCurrency(livePrice, 'USD') : 'N/A'}
+                    {livePrice !== null ? formatCurrency(livePrice, activeCurrency) : 'N/A'}
                   </span>
                 </div>
                 <span className={`chart-delta tone-${chartDirectionTone}`}>
@@ -1252,7 +1265,7 @@ function TechnicalSection({
               </div>
               <p className="chart-context-meta">
                 {chartPerformance
-                  ? `${chartDirectionLabel} in ${chartDuration}: ${formatCurrency(chartPerformance.start, 'USD')} -> ${formatCurrency(chartPerformance.end, 'USD')}`
+                  ? `${chartDirectionLabel} in ${chartDuration}: ${formatCurrency(chartPerformance.start, activeCurrency)} -> ${formatCurrency(chartPerformance.end, activeCurrency)}`
                   : 'Switch duration and chart style to inspect movement.'}
               </p>
             </div>
@@ -1354,11 +1367,11 @@ function TechnicalSection({
                 ['RSI (14)', formatNumber(data.rsi)],
                 ['MACD Signal', formatNumber(indicators?.MACD_signal)],
                 ['ADX (Trend Strength)', formatNumber(indicators?.ADX)],
-                ['20D Moving Average', formatCurrency(data.sma20, 'USD')],
-                ['50D Moving Average', formatCurrency(data.sma50, 'USD')],
-                ['200D Moving Average', formatCurrency(indicators?.SMA200, 'USD')],
-                ['Support Level', formatPrimaryLevel(structure?.support)],
-                ['Resistance Level', formatPrimaryLevel(structure?.resistance)],
+                ['20D Moving Average', formatCurrency(data.sma20, technicalCurrency)],
+                ['50D Moving Average', formatCurrency(data.sma50, technicalCurrency)],
+                ['200D Moving Average', formatCurrency(indicators?.SMA200, technicalCurrency)],
+                ['Support Level', formatPrimaryLevel(structure?.support, technicalCurrency)],
+                ['Resistance Level', formatPrimaryLevel(structure?.resistance, technicalCurrency)],
               ]}
             />
           </section>
@@ -1420,7 +1433,7 @@ function TechnicalSection({
                     <div className="price-range-tooltip" role="tooltip">
                       <p className="price-range-tooltip-label">{marker.label}</p>
                       <p className="price-range-tooltip-value">
-                        {formatCurrency(marker.value, 'USD')}
+                        {formatCurrency(marker.value, technicalCurrency)}
                       </p>
                       <p className="price-range-tooltip-distance">
                         {resolvePriceMarkerTooltipDistance(marker)}
@@ -1434,7 +1447,7 @@ function TechnicalSection({
                   <article key={row.key} className={`price-range-card kind-${row.kind}`}>
                     <div className="price-range-card-head">
                       <span>{row.label}</span>
-                      <strong>{formatCurrency(row.value, 'USD')}</strong>
+                      <strong>{formatCurrency(row.value, technicalCurrency)}</strong>
                     </div>
                     <p>{row.distanceLabel || 'N/A'}</p>
                   </article>
@@ -2111,6 +2124,7 @@ function renderSection(
   ticker: string,
 ) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
+  const displayCurrency = resolveAnalysisCurrency(analysis)
 
   switch (tab) {
     case 'fundamental':
@@ -2118,6 +2132,7 @@ function renderSection(
         <FundamentalSection
           result={analysis.fundamental}
           llmSummary={llmSections.fundamental}
+          displayCurrency={displayCurrency}
         />
       )
     case 'technical':
@@ -2133,6 +2148,7 @@ function renderSection(
             ''
           }
           beta={analysis.fundamental?.data?.beta ?? null}
+          displayCurrency={displayCurrency}
         />
       )
     case 'sentiment':
@@ -2384,20 +2400,52 @@ function formatPercent(value: number | null | undefined): string {
   return `${(value * 100).toFixed(2)}%`
 }
 
+function normalizeCurrencyCode(currency: string | null | undefined): string {
+  if (!currency) {
+    return 'USD'
+  }
+  const normalized = currency.trim().toUpperCase()
+  return normalized || 'USD'
+}
+
+function getCurrencyFormatter(currency: string): Intl.NumberFormat | null {
+  const normalized = normalizeCurrencyCode(currency)
+  const cached = currencyFormatterCache.get(normalized)
+  if (cached) {
+    return cached
+  }
+  try {
+    const formatter = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: normalized,
+      maximumFractionDigits: 2,
+    })
+    currencyFormatterCache.set(normalized, formatter)
+    return formatter
+  } catch {
+    return null
+  }
+}
+
 function formatCurrency(
   value: number | null | undefined,
   currency: string,
 ): string {
-  if (typeof value !== 'number') {
+  if (!isFiniteNumber(value)) {
     return 'N/A'
   }
-  if (currency === 'USD') {
-    return usdFormatter.format(value)
+  const normalized = normalizeCurrencyCode(currency)
+  const formatter = getCurrencyFormatter(normalized)
+  if (formatter) {
+    return formatter.format(value)
   }
-  return `${decimalFormatter.format(value)} ${currency}`
+  return `${decimalFormatter.format(value)} ${normalized}`
 }
 
-function formatPrimaryLevel(levels: number[] | null | undefined): string {
+function formatPrimaryLevel(
+  levels: number[] | null | undefined,
+  currency: string,
+): string {
   if (!Array.isArray(levels) || levels.length === 0) {
     return 'N/A'
   }
@@ -2405,7 +2453,14 @@ function formatPrimaryLevel(levels: number[] | null | undefined): string {
   if (typeof first !== 'number') {
     return 'N/A'
   }
-  return formatCurrency(first, 'USD')
+  return formatCurrency(first, currency)
+}
+
+function resolveAnalysisCurrency(analysis: AnalysisResponse): string {
+  const fundamentalCurrency = analysis.fundamental?.data?.currency
+  const technicalCurrency =
+    analysis.technical?.data?.currency ?? analysis.technical?.currency
+  return normalizeCurrencyCode(fundamentalCurrency ?? technicalCurrency)
 }
 
 function safeText(value: string | null | undefined): string {
@@ -2434,6 +2489,7 @@ type TechnicalSnapshotRow = {
     value: number
     format: 'number' | 'currency' | 'percent'
     decimals: number
+    currency?: string
   }
 }
 
@@ -2515,7 +2571,7 @@ function formatAnimatedSnapshotValue(
   numeric: NonNullable<TechnicalSnapshotRow['numeric']>,
 ): string {
   if (numeric.format === 'currency') {
-    return `${value < 0 ? '-' : ''}$${formatFixedDecimal(Math.abs(value), numeric.decimals)}`
+    return formatCurrency(value, numeric.currency ?? 'USD')
   }
   if (numeric.format === 'percent') {
     return `${formatFixedDecimal(value, numeric.decimals)}%`
@@ -3812,6 +3868,7 @@ function resolveTechnicalData(
   return {
     symbol: legacy?.symbol ?? result.symbol ?? '',
     period: legacy?.period ?? selectedPeriod,
+    currency: legacy?.currency ?? result.currency,
     ohlcv: legacy?.ohlcv ?? result.ohlcv ?? [],
     lastClose: legacy?.lastClose ?? indicators?.close ?? null,
     sma20: legacy?.sma20 ?? indicators?.SMA20 ?? null,

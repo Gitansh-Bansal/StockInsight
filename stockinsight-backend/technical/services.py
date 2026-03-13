@@ -25,6 +25,38 @@ PERIOD_MAX_POINTS = {
     "5y": 1260,
 }
 
+
+def _normalize_currency(value: Any) -> str:
+    if value is None:
+        return "USD"
+    text = str(value).strip().upper()
+    return text if text else "USD"
+
+
+def _resolve_ticker_currency(ticker_obj: yf.Ticker) -> str:
+    try:
+        fast_info = getattr(ticker_obj, "fast_info", None)
+        if fast_info is not None:
+            currency = None
+            if isinstance(fast_info, dict):
+                currency = fast_info.get("currency")
+            else:
+                currency = getattr(fast_info, "currency", None)
+            if currency:
+                return _normalize_currency(currency)
+    except Exception:
+        logger.debug("Unable to read fast_info currency for %s", getattr(ticker_obj, "ticker", "unknown"))
+
+    try:
+        info = ticker_obj.info or {}
+        currency = info.get("currency")
+        if currency:
+            return _normalize_currency(currency)
+    except Exception:
+        logger.debug("Unable to read info currency for %s", getattr(ticker_obj, "ticker", "unknown"))
+
+    return "USD"
+
 def safe_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     delta = series.diff()
 
@@ -402,10 +434,11 @@ def score_engine(
         "reasons": reasons,
     }
 
-def get_chart_data(ticker: str, duration: str) -> list[dict]:
+def get_chart_data(ticker: str, duration: str) -> dict[str, Any]:
     try:
         ticker = ticker.upper().strip()
         t = yf.Ticker(ticker)
+        currency = _resolve_ticker_currency(t)
 
         period = "1y"
         interval = "1d"
@@ -438,7 +471,7 @@ def get_chart_data(ticker: str, duration: str) -> list[dict]:
 
         df = t.history(period=period, interval=interval, auto_adjust=True)
         if df is None or df.empty:
-            return []
+            return {"ohlcv": [], "currency": currency}
 
         ohlcv = [
             {
@@ -451,15 +484,16 @@ def get_chart_data(ticker: str, duration: str) -> list[dict]:
             }
             for d, row in df.iterrows()
         ]
-        return ohlcv
+        return {"ohlcv": ohlcv, "currency": currency}
     except Exception as e:
         logger.exception("Chart data fetch failed for %s duration=%s: %s", ticker, duration, e)
-        return []
+        return {"ohlcv": [], "currency": "USD"}
 
 def get_technical_analysis(ticker: str, period: str = "1y") -> dict | None:
     try:
         ticker = ticker.upper().strip()
         t = yf.Ticker(ticker)
+        currency = _resolve_ticker_currency(t)
 
         df = _load_history_frame(t, period)
 
@@ -553,6 +587,7 @@ def get_technical_analysis(ticker: str, period: str = "1y") -> dict | None:
         # =========================
         return {
             "symbol": ticker,
+            "currency": currency,
             "trend": trend,
             "score": score_result["score"],
             "signal": score_result["signal"],
