@@ -231,6 +231,27 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
     return data.shortName ?? data.longName ?? ''
   }, [analysis])
 
+  const priceInfo = useMemo(() => {
+    if (!analysis) return null
+    const currentPrice =
+      analysis.fundamental?.data?.currentPrice ??
+      analysis.technical?.data?.lastClose ??
+      analysis.technical?.indicators?.close ??
+      null
+    if (!isFiniteNumber(currentPrice)) return null
+
+    const ohlcv = analysis.technical?.data?.ohlcv ?? analysis.technical?.ohlcv ?? []
+    let previousClose: number | null = null
+    if (ohlcv.length >= 2) {
+      const prev = ohlcv[ohlcv.length - 2]?.close
+      if (isFiniteNumber(prev)) previousClose = prev
+    }
+    const change = previousClose !== null ? currentPrice - previousClose : null
+    const changePercent = change !== null && previousClose !== null && previousClose !== 0 ? (change / previousClose) * 100 : null
+    const currency = resolveAnalysisCurrency(analysis)
+    return { currentPrice, change, changePercent, currency }
+  }, [analysis])
+
   return (
     <section className="analysis-layout">
       <div className="analysis-header reveal">
@@ -238,6 +259,22 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
           <p className="kicker">Ticker Detail</p>
           <h1>{companyName ? `${companyName} (${ticker})` : ticker}</h1>
         </div>
+        {priceInfo && (
+          <div className="ticker-price-block">
+            <span className="ticker-current-price">
+              {formatCurrency(priceInfo.currentPrice, priceInfo.currency)}
+            </span>
+            {priceInfo.change !== null && priceInfo.changePercent !== null && (
+              <span className={`ticker-price-change ${priceInfo.change >= 0 ? 'positive' : 'negative'}`}>
+                <span className="ticker-price-arrow" aria-hidden="true">
+                  {priceInfo.change >= 0 ? '▲' : '▼'}
+                </span>
+                {priceInfo.change >= 0 ? '+' : ''}{decimalFormatter.format(priceInfo.change)}
+                {' '}({priceInfo.change >= 0 ? '+' : ''}{priceInfo.changePercent.toFixed(2)}%)
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <nav className="analysis-tabs reveal" aria-label="Analysis sections">
@@ -280,12 +317,209 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
 type OverviewSectionProps = {
   overview: AnalysisResponse['overview']
   llmSummary?: string
+  technical?: TechnicalResult | null
+  sentiment?: import('./types').SentimentResult | null
+  sentimentLlm?: string
+  ticker?: string
+  displayCurrency?: string
 }
 
-function OverviewSection({ overview, llmSummary }: OverviewSectionProps) {
+function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker, displayCurrency }: OverviewSectionProps) {
   const summary =
     llmSummary?.trim() ||
     'Composite score blends fundamental, technical, and sentiment signals into one decision-oriented output.'
+
+  const overviewChartRef = useRef<HTMLDivElement | null>(null)
+  const [isOverviewChartReady, setIsOverviewChartReady] = useState(false)
+  const [ovChartType, setOvChartType] = useState<ChartType>('candle')
+  const [ovChartDuration, setOvChartDuration] = useState<string>('1M')
+  const [ovChartData, setOvChartData] = useState<any[]>([])
+  const [ovChartCurrency, setOvChartCurrency] = useState<string | null>(null)
+  const [isOvChartLoading, setIsOvChartLoading] = useState(false)
+  const [ovChartFetchError, setOvChartFetchError] = useState('')
+
+  const fallbackOhlcv = useMemo(() => {
+    if (!technical) return []
+    const data = resolveTechnicalData(technical)
+    return data.ohlcv ?? []
+  }, [technical])
+
+  const overviewCurrency = displayCurrency ?? 'USD'
+  const activeCurrency = ovChartCurrency ? normalizeCurrencyCode(ovChartCurrency) : overviewCurrency
+
+  const activeChartRows = useMemo(
+    () => (ovChartData.length > 0 ? ovChartData : fallbackOhlcv),
+    [ovChartData, fallbackOhlcv],
+  )
+
+  const chartPerformance = useMemo(() => {
+    const closes = activeChartRows
+      .map((point) => point?.close)
+      .filter((value): value is number => isFiniteNumber(value))
+    if (closes.length < 2 || closes[0] === 0) return null
+    const start = closes[0]
+    const end = closes[closes.length - 1]
+    const change = end - start
+    return { start, end, change, percent: (change / start) * 100 }
+  }, [activeChartRows])
+
+
+  const chartDirectionLabel =
+    chartPerformance && chartPerformance.change > 0
+      ? 'Uptrend'
+      : chartPerformance && chartPerformance.change < 0
+        ? 'Downtrend'
+        : 'Sideways'
+
+  const livePrice = useMemo(() => {
+    const latest = activeChartRows[activeChartRows.length - 1]?.close
+    if (isFiniteNumber(latest)) return latest
+    return null
+  }, [activeChartRows])
+
+  // Fetch chart data when duration changes
+  useEffect(() => {
+    if (!ticker) return
+    let cancelled = false
+    setIsOvChartLoading(true)
+    setOvChartFetchError('')
+    setOvChartCurrency(null)
+
+    import('./api')
+      .then(({ fetchChartData }) => fetchChartData(ticker, ovChartDuration))
+      .then((payload) => {
+        if (!cancelled) {
+          setOvChartData(payload.ohlcv || [])
+          setOvChartCurrency(payload.currency ?? null)
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setOvChartFetchError(err instanceof Error ? err.message : 'Failed to load chart data.')
+          setOvChartData([])
+        }
+      })
+      .finally(() => { if (!cancelled) setIsOvChartLoading(false) })
+
+    return () => { cancelled = true }
+  }, [ticker, ovChartDuration])
+
+  // Init LightweightCharts
+  useEffect(() => {
+    const container = overviewChartRef.current
+    if (!container || activeChartRows.length === 0) return
+
+    let cancelled = false
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let chart: any | null = null
+    let resizeObserver: ResizeObserver | null = null
+
+    const initChart = async () => {
+      let lib = (window as any).LightweightCharts
+      if (!lib) {
+        const script = document.createElement('script')
+        script.src =
+          'https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js'
+        script.async = true
+        await new Promise<void>((resolve, reject) => {
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error('Failed to load chart library'))
+          document.head.appendChild(script)
+        })
+        lib = (window as any).LightweightCharts
+        if (!lib) return
+      }
+      if (cancelled) return
+
+      const { width, height } = container.getBoundingClientRect()
+      chart = lib.createChart(container, {
+        width,
+        height,
+        layout: { background: { color: 'white' }, textColor: '#111827' },
+        rightPriceScale: { visible: true },
+        timeScale: { borderColor: '#e5e7eb', timeVisible: true },
+        grid: { vertLines: { color: '#f3f4f6' }, horzLines: { color: '#f3f4f6' } },
+        localization: { locale: 'en-US', priceFormatter: (price: number) => formatCurrency(price, activeCurrency) },
+        handleScroll: false,
+        handleScale: false,
+      })
+
+      const ohlcv = activeChartRows
+      let candles = ohlcv
+        .map((bar) => {
+          const t = bar.date
+          const dt = typeof t === 'string' ? new Date(t) : new Date(t * 1000)
+          if (Number.isNaN(dt.getTime())) return null
+          return { time: dt.getTime() / 1000 as any, open: bar.open, high: bar.high, low: bar.low, close: bar.close }
+        })
+        .filter(Boolean) as Array<{ time: any; open: number; high: number; low: number; close: number }>
+
+      candles.sort((a, b) => a.time - b.time)
+      const uniqueCandles: typeof candles = []
+      const seenTimes = new Set()
+      for (const candle of candles) {
+        if (!seenTimes.has(candle.time)) {
+          seenTimes.add(candle.time)
+          uniqueCandles.push(candle)
+        }
+      }
+      candles = uniqueCandles
+
+      const lineData = candles.map((c) => ({ time: c.time, value: c.close }))
+
+      let series: any
+      if (ovChartType === 'candle') {
+        series = chart.addCandlestickSeries()
+        series.setData(candles)
+      } else if (ovChartType === 'bar') {
+        series = chart.addBarSeries()
+        series.setData(candles)
+      } else if (ovChartType === 'area') {
+        series = chart.addAreaSeries({
+          lineColor: '#2962ff',
+          topColor: 'rgba(41, 98, 255, 0.4)',
+          bottomColor: 'rgba(41, 98, 255, 0.0)',
+        })
+        series.setData(lineData)
+      } else {
+        series = chart.addLineSeries({ color: '#2962ff' })
+        series.setData(lineData)
+      }
+
+      chart.timeScale().fitContent()
+      if (!cancelled) setIsOverviewChartReady(true)
+      if (cancelled) { chart?.remove(); return }
+
+      const resize = () => {
+        if (!container || !chart) return
+        const { width: w, height: h } = container.getBoundingClientRect()
+        chart.applyOptions({ width: w, height: h })
+      }
+      resize()
+      resizeObserver = new ResizeObserver(resize)
+      resizeObserver.observe(container)
+    }
+
+    initChart().catch(() => {
+      if (!cancelled) setIsOverviewChartReady(true)
+    })
+
+    return () => {
+      cancelled = true
+      if (resizeObserver && container) resizeObserver.unobserve(container)
+      if (chart) chart.remove()
+    }
+  }, [activeChartRows, ovChartType, ovChartDuration, activeCurrency])
+
+  // News insights from sentiment
+  const newsInsights = useMemo(() => {
+    const sentimentText = sentimentLlm?.trim() || ''
+    if (!sentimentText) return null
+    const parsed = parseSentimentSummary(sentimentText)
+    if (parsed.insights.length === 0) return null
+    return parsed.insights
+  }, [sentimentLlm])
+
 
   return (
     <article className="panel reveal">
@@ -296,22 +530,122 @@ function OverviewSection({ overview, llmSummary }: OverviewSectionProps) {
         </span>
       </header>
       <p className="analysis-copy">{summary}</p>
-      <div className="score-strip">
-        <ScorePill label="Overall" score={overview.overallScore} />
-        <ScorePill label="Fundamental" score={overview.fundamentalScore} />
-        <ScorePill label="Technical" score={overview.technicalScore} />
-        <ScorePill label="Sentiment" score={overview.sentimentScore} />
-      </div>
-      <h3>Data used</h3>
-      <MetricList
-        rows={[
-          ['Fundamental score input', formatScore(overview.fundamentalScore)],
-          ['Technical score input', formatScore(overview.technicalScore)],
-          ['Sentiment score input', formatScore(overview.sentimentScore)],
-          ['Weighted overall score', formatScore(overview.overallScore)],
-          ['Model verdict', overview.verdict],
-        ]}
-      />
+
+      {/* Chart + Scores Layout */}
+      {fallbackOhlcv.length > 0 && (
+        <div className="overview-chart-layout">
+          <div className="chart-block">
+            <div className="chart-surface-head">
+              <div className="chart-context">
+                <div className="chart-context-main">
+                  <div className="chart-symbol-price">
+                    <h3>{ticker?.toUpperCase() ?? ''}</h3>
+                    <span className="chart-live-price">
+                      <span className="chart-live-dot" aria-hidden="true" />
+                      {livePrice !== null ? formatCurrency(livePrice, activeCurrency) : 'N/A'}
+                    </span>
+                  </div>
+                </div>
+                <p className="chart-context-meta">
+                  {chartPerformance
+                    ? `${chartDirectionLabel} in ${ovChartDuration}: ${formatCurrency(chartPerformance.start, activeCurrency)} -> ${formatCurrency(chartPerformance.end, activeCurrency)}`
+                    : 'Switch duration and chart style to inspect movement.'}
+                </p>
+              </div>
+              <div className="chart-controls" aria-label="Chart controls">
+                <div className="chart-type-selector">
+                  {CHART_DURATION_OPTIONS.map((dur) => (
+                    <button
+                      key={dur}
+                      type="button"
+                      className={ovChartDuration === dur ? 'active' : ''}
+                      onClick={() => setOvChartDuration(dur)}
+                    >
+                      {dur}
+                    </button>
+                  ))}
+                </div>
+                <select
+                  className="chart-type-select"
+                  value={ovChartType}
+                  onChange={(e) => setOvChartType(e.target.value as ChartType)}
+                  aria-label="Select chart type"
+                >
+                  {CHART_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div
+              className={`tv-chart-shell${isOvChartLoading ? ' is-loading' : ''}${isOverviewChartReady ? ' is-ready' : ''}${ovChartFetchError ? ' has-error' : ''}`}
+            >
+              <div
+                key={`ov-${ovChartType}-${ovChartDuration}`}
+                className="tv-chart-wrap"
+                ref={overviewChartRef}
+              />
+              {isOvChartLoading && (
+                <div className="chart-overlay" role="status" aria-live="polite">
+                  <span className="chart-loader-line" />
+                  <p>Refreshing chart...</p>
+                </div>
+              )}
+              {!isOvChartLoading && ovChartFetchError && (
+                <div className="chart-overlay chart-overlay-error" role="status">
+                  <p>{ovChartFetchError}</p>
+                </div>
+              )}
+              {!isOvChartLoading && !ovChartFetchError && activeChartRows.length === 0 && (
+                <div className="chart-overlay" role="status">
+                  <p>No chart data available for this range.</p>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="overview-scores-column">
+            <div className={`overview-score-card verdict-card tone-${toneFromVerdict(overview.verdict)}`}>
+              <span className="overview-score-label">Verdict</span>
+              <strong className="overview-score-value">{overview.verdict}</strong>
+            </div>
+            <div className={`overview-score-card overall tone-${toneFromVerdict(overview.verdict)}`}>
+              <span className="overview-score-label">Overall Score</span>
+              <strong className="overview-score-value">{formatScore(overview.overallScore)}</strong>
+              <span className="overview-score-band">{scoreBand(overview.overallScore)}</span>
+            </div>
+            <div className="overview-score-card">
+              <span className="overview-score-label">Fundamental</span>
+              <strong className="overview-score-value">{formatScore(overview.fundamentalScore)}</strong>
+              <span className="overview-score-band">{scoreBand(overview.fundamentalScore)}</span>
+            </div>
+            <div className="overview-score-card">
+              <span className="overview-score-label">Technical</span>
+              <strong className="overview-score-value">{formatScore(overview.technicalScore)}</strong>
+              <span className="overview-score-band">{scoreBand(overview.technicalScore)}</span>
+            </div>
+            <div className="overview-score-card">
+              <span className="overview-score-label">Sentiment</span>
+              <strong className="overview-score-value">{formatScore(overview.sentimentScore)}</strong>
+              <span className="overview-score-band">{scoreBand(overview.sentimentScore)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* News Insights Block */}
+      {newsInsights && newsInsights.length > 0 && (
+        <section className="sentiment-summary-card">
+          <h3>Main Insights from news headlines</h3>
+          <ul className="analysis-bullets">
+            {newsInsights.map((item, index) => (
+              <li key={`overview-insight-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
     </article>
   )
 }
@@ -2149,6 +2483,11 @@ function renderSection(
         <OverviewSection
           overview={analysis.overview}
           llmSummary={llmSections.overall}
+          technical={analysis.technical}
+          sentiment={analysis.sentiment}
+          sentimentLlm={llmSections.sentiment}
+          ticker={ticker}
+          displayCurrency={displayCurrency}
         />
       )
   }

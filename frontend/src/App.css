@@ -607,6 +607,132 @@
   overflow-x: auto;
 }
 
+/* ── Ticker Price Block (Yahoo Finance style) ── */
+.ticker-price-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+}
+
+.ticker-current-price {
+  font-size: 1.65rem;
+  font-weight: 800;
+  font-family: var(--mono-font);
+  color: var(--ink);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.ticker-price-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-family: var(--mono-font);
+  line-height: 1;
+}
+
+.ticker-price-change.positive {
+  color: #16a34a;
+}
+
+.ticker-price-change.negative {
+  color: #dc2626;
+}
+
+.ticker-price-arrow {
+  font-size: 0.65rem;
+}
+
+/* ── Overview Chart + Scores Layout ── */
+.overview-chart-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) 220px;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+
+
+.overview-scores-column {
+  display: grid;
+  grid-template-rows: repeat(5, 1fr);
+  gap: 0.55rem;
+}
+
+.overview-score-card {
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  background: color-mix(in hsl, var(--card) 80%, white 20%);
+  display: grid;
+  gap: 0.15rem;
+  align-content: center;
+  text-align: center;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+.overview-score-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.1);
+}
+
+.overview-score-card.overall,
+.overview-score-card.verdict-card {
+  padding: 0.85rem;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+
+.overview-score-card.overall .overview-score-value,
+.overview-score-card.verdict-card .overview-score-value {
+  font-size: 1.9rem;
+  letter-spacing: -0.02em;
+}
+
+.overview-score-card.overall.tone-positive,
+.overview-score-card.verdict-card.tone-positive {
+  border: 2px solid #22c55e;
+  background: linear-gradient(135deg, color-mix(in hsl, #22c55e 5%, var(--card) 95%) 0%, color-mix(in hsl, var(--card) 92%, white 8%) 100%);
+}
+
+.overview-score-card.overall.tone-negative,
+.overview-score-card.verdict-card.tone-negative {
+  border: 2px solid #ef4444;
+  background: linear-gradient(135deg, color-mix(in hsl, #ef4444 5%, var(--card) 95%) 0%, color-mix(in hsl, var(--card) 92%, white 8%) 100%);
+}
+
+.overview-score-card.overall.tone-neutral,
+.overview-score-card.verdict-card.tone-neutral {
+  border: 2px solid #eab308;
+  background: linear-gradient(135deg, color-mix(in hsl, #eab308 5%, var(--card) 95%) 0%, color-mix(in hsl, var(--card) 92%, white 8%) 100%);
+}
+
+.overview-score-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.overview-score-value {
+  font-size: 1.2rem;
+  font-weight: 800;
+  font-family: var(--mono-font);
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.overview-score-band {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .technical-layout {
   display: grid;
   grid-template-columns: minmax(0, 2.1fr) minmax(260px, 1fr);
@@ -2832,6 +2958,15 @@ th {
 
   .technical-layout {
     grid-template-columns: 1fr;
+  }
+
+  .overview-chart-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-scores-column {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: auto;
   }
 
   .snapshot-tiles-grid {
