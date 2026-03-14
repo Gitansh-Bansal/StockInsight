@@ -109,14 +109,38 @@ function HeaderBar({
   onHome,
 }: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState(initialSearch)
+  const [isHidden, setIsHidden] = useState(false)
+  const lastScrollYRef = useRef(0)
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     onSearch(searchValue)
   }
 
+  useEffect(() => {
+    const onScroll = () => {
+      const currentScrollY = window.scrollY
+      const previousScrollY = lastScrollYRef.current
+
+      if (currentScrollY <= 24) {
+        setIsHidden(false)
+      } else if (currentScrollY > previousScrollY && currentScrollY > 96) {
+        setIsHidden(true)
+      } else if (currentScrollY < previousScrollY) {
+        setIsHidden(false)
+      }
+
+      lastScrollYRef.current = currentScrollY
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [])
+
   return (
-    <header className="top-bar">
+    <header className={`top-bar${isHidden ? ' is-hidden' : ''}`}>
       <button className="brand" type="button" onClick={onHome}>
         StockInsight
       </button>
@@ -1266,6 +1290,9 @@ function TechnicalSection({
 
   const tradingViewSymbol = toTradingViewSymbol(data.symbol)
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
+  const chartShellRef = useRef<HTMLDivElement | null>(null)
+  const scoreCardRef = useRef<HTMLElement | null>(null)
+  const snapshotSectionRef = useRef<HTMLElement | null>(null)
   const [chartType, setChartType] = useState<ChartType>('candle')
   const [chartDuration, setChartDuration] = useState<string>('1M')
   const [chartData, setChartData] = useState<any[]>([])
@@ -1274,6 +1301,9 @@ function TechnicalSection({
   const [chartFetchError, setChartFetchError] = useState('')
   const [isChartReady, setIsChartReady] = useState(false)
   const [showPriceRangeMarkers, setShowPriceRangeMarkers] = useState(false)
+  const isChartInView = useInViewOnce(chartShellRef, { threshold: 0.2 })
+  const isScoreCardInView = useInViewOnce(scoreCardRef, { threshold: 0.35 })
+  const isSnapshotInView = useInViewOnce(snapshotSectionRef, { threshold: 0.2 })
   const activeChartRows = useMemo(
     () => (chartData.length > 0 ? chartData : (data.ohlcv ?? [])),
     [chartData, data.ohlcv],
@@ -1319,7 +1349,11 @@ function TechnicalSection({
   const technicalScorePercent = isFiniteNumber(result.score)
     ? clampPercent(result.score)
     : 50
-  const animatedTechnicalScorePercent = useAnimatedNumber(technicalScorePercent, 900)
+  const animatedTechnicalScorePercent = useAnimatedNumber(
+    technicalScorePercent,
+    1400,
+    isScoreCardInView,
+  )
   const technicalScoreZone = isFiniteNumber(result.score)
     ? result.score < 30
       ? 'strong-bearish'
@@ -1344,7 +1378,7 @@ function TechnicalSection({
 
   useEffect(() => {
     setShowPriceRangeMarkers(false)
-    if (priceRangeMarkers.length === 0) {
+    if (!isSnapshotInView || priceRangeMarkers.length === 0) {
       return
     }
 
@@ -1352,7 +1386,7 @@ function TechnicalSection({
       setShowPriceRangeMarkers(true)
     })
     return () => cancelAnimationFrame(frame)
-  }, [priceMarkerAnimationKey])
+  }, [isSnapshotInView, priceMarkerAnimationKey])
 
   // Fetch fine-grained chart data when duration changes
   useEffect(() => {
@@ -1616,7 +1650,8 @@ function TechnicalSection({
             </div>
           </div>
           <div
-            className={`tv-chart-shell${isChartLoading ? ' is-loading' : ''}${isChartReady ? ' is-ready' : ''}${chartFetchError ? ' has-error' : ''}`}
+            ref={chartShellRef}
+            className={`tv-chart-shell${isChartLoading ? ' is-loading' : ''}${isChartReady ? ' is-ready' : ''}${chartFetchError ? ' has-error' : ''}${isChartInView ? ' is-armed' : ''}`}
           >
             <div
               key={`${chartType}-${chartDuration}`}
@@ -1642,7 +1677,10 @@ function TechnicalSection({
           </div>
         </div>
         <aside className="technical-side-column">
-          <section className={`technical-score-card tone-${technicalScoreTone}`}>
+          <section
+            ref={scoreCardRef}
+            className={`technical-score-card tone-${technicalScoreTone}`}
+          >
             <h3>Technical Score</h3>
             <div className={`technical-score-meter-wrap zone-${technicalScoreZone}`}>
               <div className="technical-score-meter-head">
@@ -1696,7 +1734,11 @@ function TechnicalSection({
           </section>
         </aside>
       </div>
-      <section className="technical-snapshot-section" aria-label="Technical snapshot">
+      <section
+        ref={snapshotSectionRef}
+        className="technical-snapshot-section"
+        aria-label="Technical snapshot"
+      >
         <div className="technical-snapshot-panels">
           <article className="snapshot-panel">
             <header className="snapshot-panel-head">
@@ -1707,7 +1749,12 @@ function TechnicalSection({
             </header>
             <div className="snapshot-tiles-grid">
               {snapshotTiles.map((tile, index) => (
-                <SnapshotMetricTile key={tile.key} tile={tile} index={index} />
+                <SnapshotMetricTile
+                  key={tile.key}
+                  tile={tile}
+                  index={index}
+                  isAnimated={isSnapshotInView}
+                />
               ))}
             </div>
           </article>
@@ -1740,7 +1787,7 @@ function TechnicalSection({
                 {priceRangeMarkers.map((marker, index) => (
                   <div
                     key={marker.key}
-                    className={`price-range-marker kind-${marker.kind} anchor-${marker.anchor} ${index % 2 === 0 ? 'above' : 'below'}`}
+                    className={`price-range-marker kind-${marker.kind} anchor-${marker.anchor} ${index % 2 === 0 ? 'above' : 'below'}${showPriceRangeMarkers ? ' is-animated' : ''}`}
                     style={{
                       left: showPriceRangeMarkers ? `${marker.position}%` : '50%',
                       opacity: showPriceRangeMarkers ? 1 : 0,
@@ -1788,7 +1835,7 @@ function TechnicalSection({
                   </header>
                   <div className="indicator-mini-body">
                     {chart.series.length > 0 ? (
-                      <IndicatorMiniSparkline chart={chart} />
+                      <IndicatorMiniSparkline chart={chart} isAnimated={isSnapshotInView} />
                     ) : (
                       <div className="indicator-mini-empty">No data</div>
                     )}
@@ -2046,12 +2093,14 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
 function SnapshotMetricTile({
   tile,
   index,
+  isAnimated,
 }: {
   tile: TechnicalSnapshotRow
   index: number
+  isAnimated: boolean
 }) {
-  const animatedValue = useAnimatedNumber(tile.numeric?.value ?? null, 800)
-  const animatedProgress = useAnimatedNumber(tile.progressPercent, 800)
+  const animatedValue = useAnimatedNumber(tile.numeric?.value ?? null, 1200, isAnimated)
+  const animatedProgress = useAnimatedNumber(tile.progressPercent, 1200, isAnimated)
   const valueLabel =
     tile.numeric && isFiniteNumber(animatedValue)
       ? formatAnimatedSnapshotValue(animatedValue, tile.numeric)
@@ -2059,8 +2108,8 @@ function SnapshotMetricTile({
 
   return (
     <article
-      className={`snapshot-tile snapshot-tile-enter tone-${tile.tone}`}
-      style={{ animationDelay: `${80 + index * 45}ms` }}
+      className={`snapshot-tile tone-${tile.tone}${isAnimated ? ' snapshot-tile-enter' : ''}`}
+      style={isAnimated ? { animationDelay: `${80 + index * 45}ms` } : undefined}
     >
       <p className="snapshot-tile-label">{tile.metric}</p>
       <div className="snapshot-tile-value-row">
@@ -2082,7 +2131,13 @@ function SnapshotMetricTile({
   )
 }
 
-function IndicatorMiniSparkline({ chart }: { chart: IndicatorMiniChart }) {
+function IndicatorMiniSparkline({
+  chart,
+  isAnimated,
+}: {
+  chart: IndicatorMiniChart
+  isAnimated: boolean
+}) {
   const gradientId = `indicator-mini-gradient-${chart.key}`
 
   return (
@@ -2106,11 +2161,11 @@ function IndicatorMiniSparkline({ chart }: { chart: IndicatorMiniChart }) {
           stroke={chart.stroke}
           strokeWidth={2}
           fill={`url(#${gradientId})`}
-          isAnimationActive
-          animationDuration={900}
-          animationEasing="ease-out"
+          isAnimationActive={isAnimated}
+          animationDuration={1400}
+          animationEasing="ease-in-out"
           dot={(dotProps) => (
-            <IndicatorMiniPoint dotProps={dotProps} stroke={chart.stroke} />
+            <IndicatorMiniPoint dotProps={dotProps} stroke={chart.stroke} isAnimated={isAnimated} />
           )}
           activeDot={{
             r: 4.2,
@@ -2127,6 +2182,7 @@ function IndicatorMiniSparkline({ chart }: { chart: IndicatorMiniChart }) {
 function IndicatorMiniPoint({
   dotProps,
   stroke,
+  isAnimated,
 }: {
   dotProps: {
     cx?: number
@@ -2134,6 +2190,7 @@ function IndicatorMiniPoint({
     payload?: IndicatorMiniSeriesPoint
   }
   stroke: string
+  isAnimated: boolean
 }) {
   const { cx, cy, payload } = dotProps
   if (!isFiniteNumber(cx) || !isFiniteNumber(cy)) {
@@ -2146,8 +2203,8 @@ function IndicatorMiniPoint({
       cy={cy}
       r={1.9}
       fill={stroke}
-      className="indicator-mini-point"
-      style={{ animationDelay: `${80 + (payload?.index ?? 0) * 22}ms` }}
+      className={`indicator-mini-point${isAnimated ? ' is-animated' : ''}`}
+      style={isAnimated ? { animationDelay: `${80 + (payload?.index ?? 0) * 22}ms` } : undefined}
     />
   )
 }
@@ -2836,11 +2893,20 @@ function resolveMovingAverageProgress(
   return clampPercent(50 + deltaPercent * 5)
 }
 
-function useAnimatedNumber(target: number | null, durationMs: number): number | null {
+function useAnimatedNumber(
+  target: number | null,
+  durationMs: number,
+  shouldAnimate = true,
+): number | null {
   const [animated, setAnimated] = useState(0)
 
   useEffect(() => {
     if (!isFiniteNumber(target)) {
+      setAnimated(0)
+      return
+    }
+
+    if (!shouldAnimate) {
       setAnimated(0)
       return
     }
@@ -2852,7 +2918,10 @@ function useAnimatedNumber(target: number | null, durationMs: number): number | 
     const step = (timestamp: number) => {
       const elapsed = timestamp - startTime
       const progress = Math.min(1, elapsed / durationMs)
-      const eased = 1 - (1 - progress) ** 3
+      const eased =
+        progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - ((-2 * progress + 2) ** 3) / 2
       setAnimated(startValue + (target - startValue) * eased)
       if (progress < 1) {
         frame = requestAnimationFrame(step)
@@ -2862,9 +2931,42 @@ function useAnimatedNumber(target: number | null, durationMs: number): number | 
     setAnimated(0)
     frame = requestAnimationFrame(step)
     return () => cancelAnimationFrame(frame)
-  }, [target, durationMs])
+  }, [target, durationMs, shouldAnimate])
 
   return isFiniteNumber(target) ? animated : null
+}
+
+function useInViewOnce<T extends Element>(
+  ref: React.RefObject<T | null>,
+  options?: IntersectionObserverInit,
+): boolean {
+  const [isVisible, setIsVisible] = useState(false)
+
+  useEffect(() => {
+    if (isVisible) {
+      return
+    }
+
+    const node = ref.current
+    if (!node) {
+      return
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          setIsVisible(true)
+          observer.disconnect()
+          break
+        }
+      }
+    }, options)
+
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [isVisible, options, ref])
+
+  return isVisible
 }
 
 function formatFixedDecimal(value: number, decimals: number): string {
