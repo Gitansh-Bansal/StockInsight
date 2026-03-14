@@ -1874,19 +1874,31 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
   const headlines: SentimentHeadline[] = result.headlines
   const summary = llmSummary?.trim() || summarizeScore(result.score, 'sentiment')
   const sentimentSummary = parseSentimentSummary(summary)
-  const overallBand = scoreBand(result.score)
-  const overallBandTone =
-    overallBand === 'Bullish'
-      ? 'positive'
-      : overallBand === 'Bearish'
-        ? 'negative'
-        : 'neutral'
-  const scoreValue = Number.isFinite(result.score)
-    ? Math.max(0, Math.min(100, result.score))
-    : 0
-  const meterRadius = 46
-  const meterCircumference = 2 * Math.PI * meterRadius
-  const meterDashOffset = meterCircumference * (1 - scoreValue / 100)
+  const sentimentScorePercent = isFiniteNumber(result.score)
+    ? clampPercent(result.score)
+    : 50
+  const sentimentScoreZone = isFiniteNumber(result.score)
+    ? result.score < 30
+      ? 'strong-bearish'
+      : result.score < 45
+        ? 'bearish'
+        : result.score < 55
+          ? 'neutral'
+          : result.score < 70
+            ? 'bullish'
+            : 'strong-bullish'
+    : 'neutral'
+  const sentimentSignalLabel = isFiniteNumber(result.score)
+    ? result.score < 30
+      ? 'Very Negative'
+      : result.score < 45
+        ? 'Negative'
+        : result.score < 55
+          ? 'Mixed'
+          : result.score < 70
+            ? 'Positive'
+            : 'Very Positive'
+    : 'N/A'
   const sentimentCounts = headlines.reduce(
     (counts, headline) => {
       const tone = sentimentSignalTone(headline.sentiment)
@@ -1948,43 +1960,7 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
       <div className="sentiment-metrics-grid">
         <section className="sentiment-summary-card sentiment-overview-card">
           <div className="sentiment-overview-split">
-            <div className="sentiment-meter-wrap">
-              <div
-                className={`sentiment-score-meter tone-${overallBandTone}`}
-                aria-label={`Overall sentiment score ${formatScore(result.score)}`}
-                role="img"
-              >
-                <svg
-                  className="sentiment-score-meter-svg"
-                  viewBox="0 0 120 120"
-                  aria-hidden="true"
-                >
-                  <circle
-                    className="sentiment-score-meter-track"
-                    cx="60"
-                    cy="60"
-                    r={meterRadius}
-                  />
-                  <circle
-                    className="sentiment-score-meter-progress"
-                    cx="60"
-                    cy="60"
-                    r={meterRadius}
-                    strokeDasharray={meterCircumference}
-                    strokeDashoffset={meterDashOffset}
-                  />
-                </svg>
-                <div className="sentiment-score-meter-inner">
-                  <strong className="sentiment-score-meter-value">
-                    {formatScore(result.score)}
-                  </strong>
-                  <span className={`sentiment-meter-band tone-${overallBandTone}`}>
-                    {overallBand}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <dl className="sentiment-count-list">
+            <dl className="sentiment-count-list sentiment-counts-panel">
               <div>
                 <dt>Positive headlines</dt>
                 <dd>{sentimentCounts.positive}</dd>
@@ -1998,6 +1974,46 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
                 <dd>{sentimentCounts.negative}</dd>
               </div>
             </dl>
+            <div className="sentiment-meter-wrap">
+              <h3 className="sentiment-meter-title">Sentiment Score</h3>
+              <div
+                className={`technical-score-meter-wrap zone-${sentimentScoreZone}`}
+                aria-label={`Overall sentiment score ${formatScore(result.score)} (${sentimentSignalLabel})`}
+                role="img"
+              >
+                <div className="technical-score-meter-head">
+                  <span className="technical-score-signal">{sentimentSignalLabel}</span>
+                  <strong className="technical-score-value">{formatScore(result.score)}</strong>
+                </div>
+                <div className="technical-score-meter-visual" aria-hidden="true">
+                  <div className="technical-score-meter-track">
+                    <div className="technical-score-meter-segments">
+                      <span className="segment strong-bearish" />
+                      <span className="segment bearish" />
+                      <span className="segment neutral" />
+                      <span className="segment bullish" />
+                      <span className="segment strong-bullish" />
+                    </div>
+                    <span
+                      className="technical-score-meter-marker"
+                      style={{ left: `${sentimentScorePercent}%` }}
+                    />
+                  </div>
+                  <div className="technical-score-meter-scale">
+                    {[0, 25, 50, 75, 100].map((tick) => (
+                      <span
+                        key={`sentiment-tick-${tick}`}
+                        className={`technical-score-meter-tick${tick === 0 ? ' edge-start' : ''}${tick === 100 ? ' edge-end' : ''}`}
+                        style={{ left: `${tick}%` }}
+                      >
+                        <span className="technical-score-meter-tick-mark" />
+                        <span className="technical-score-meter-tick-label">{tick}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -2548,21 +2564,6 @@ function renderSection(
         />
       )
   }
-}
-
-type ScorePillProps = {
-  label: string
-  score: number | null
-}
-
-function ScorePill({ label, score }: ScorePillProps) {
-  return (
-    <div className="score-pill">
-      <p>{label}</p>
-      <strong>{formatScore(score)}</strong>
-      <span>{scoreBand(score)}</span>
-    </div>
-  )
 }
 
 type MetricListProps = {
