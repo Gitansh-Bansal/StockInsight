@@ -1292,7 +1292,6 @@ function TechnicalSection({
   const tradingViewSymbol = toTradingViewSymbol(data.symbol)
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const chartShellRef = useRef<HTMLDivElement | null>(null)
-  const scoreCardRef = useRef<HTMLElement | null>(null)
   const snapshotSectionRef = useRef<HTMLElement | null>(null)
   const [chartType, setChartType] = useState<ChartType>('candle')
   const [chartDuration, setChartDuration] = useState<string>('1M')
@@ -1303,7 +1302,6 @@ function TechnicalSection({
   const [isChartReady, setIsChartReady] = useState(false)
   const [showPriceRangeMarkers, setShowPriceRangeMarkers] = useState(false)
   const isChartInView = useInViewOnce(chartShellRef, { threshold: 0.2 })
-  const isScoreCardInView = useInViewOnce(scoreCardRef, { threshold: 0.35 })
   const isSnapshotInView = useInViewOnce(snapshotSectionRef, { threshold: 0.2 })
   const activeChartRows = useMemo(
     () => (chartData.length > 0 ? chartData : (data.ohlcv ?? [])),
@@ -1350,11 +1348,6 @@ function TechnicalSection({
   const technicalScorePercent = isFiniteNumber(result.score)
     ? clampPercent(result.score)
     : 50
-  const animatedTechnicalScorePercent = useAnimatedNumber(
-    technicalScorePercent,
-    1400,
-    isScoreCardInView,
-  )
   const technicalScoreZone = isFiniteNumber(result.score)
     ? result.score < 30
       ? 'strong-bearish'
@@ -1678,10 +1671,7 @@ function TechnicalSection({
           </div>
         </div>
         <aside className="technical-side-column">
-          <section
-            ref={scoreCardRef}
-            className={`technical-score-card tone-${technicalScoreTone}`}
-          >
+          <section className={`technical-score-card tone-${technicalScoreTone}`}>
             <h3>Technical Score</h3>
             <div className={`technical-score-meter-wrap zone-${technicalScoreZone}`}>
               <div className="technical-score-meter-head">
@@ -1699,7 +1689,7 @@ function TechnicalSection({
                   </div>
                   <span
                     className="technical-score-meter-marker"
-                    style={{ left: `${clampPercent(animatedTechnicalScorePercent ?? 0)}%` }}
+                    style={{ left: `${technicalScorePercent}%` }}
                   />
                 </div>
                 <div className="technical-score-meter-scale">
@@ -2065,6 +2055,8 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
         )}
         {visibleHeadlines.map((headline, index) => {
           const signalTone = sentimentSignalTone(headline.sentiment)
+          const sentimentLabel = formatHeadlineSentimentLabel(headline.sentiment)
+          const confidenceLabel = formatHeadlineConfidence(headline.sentimentScore)
           return (
             <article className="headline-item" key={`${headline.title}-${index}`}>
               <div className="headline-row">
@@ -2078,9 +2070,12 @@ function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
                 <div className="headline-meta">
                   <span
                     className={`headline-signal tone-${signalTone}`}
-                    aria-label={`${signalTone} sentiment`}
-                    title={`${signalTone} sentiment`}
-                  />
+                    aria-label={`${sentimentLabel} sentiment, confidence ${confidenceLabel}`}
+                    title={`${sentimentLabel} sentiment, confidence ${confidenceLabel}`}
+                  >
+                    <span className="headline-signal-label">{sentimentLabel}</span>
+                    <span className="headline-signal-confidence">{confidenceLabel}</span>
+                  </span>
                   <span className="headline-time">
                     {formatHeadlineTimestamp(resolveHeadlineTimestamp(headline))}
                   </span>
@@ -2258,7 +2253,6 @@ function FullReportSection({ analysis }: { analysis: AnalysisResponse }) {
   const reportText = normalizeInlineBulletLists(
     emphasizeSummaryLabel(analysis.report?.trim() ?? ''),
   )
-  const source = analysis.reportSource?.trim() ?? 'unknown'
 
   if (!reportText) {
     return (
@@ -2272,7 +2266,6 @@ function FullReportSection({ analysis }: { analysis: AnalysisResponse }) {
     <article className="panel reveal">
       <header className="panel-head">
         <h2>FULL REPORT</h2>
-        <span className="score-tag">{source.toUpperCase()}</span>
       </header>
       <div className="full-report-markdown">
         <MarkdownContent text={reportText} />
@@ -4150,6 +4143,25 @@ function sentimentSignalTone(value: string | undefined): 'positive' | 'neutral' 
     return 'negative'
   }
   return 'neutral'
+}
+
+function formatHeadlineSentimentLabel(value: string | undefined): string {
+  const tone = sentimentSignalTone(value)
+  if (tone === 'positive') {
+    return 'Positive'
+  }
+  if (tone === 'negative') {
+    return 'Negative'
+  }
+  return 'Neutral'
+}
+
+function formatHeadlineConfidence(value: unknown): string {
+  if (!isFiniteNumber(value)) {
+    return 'N/A'
+  }
+  const percent = Math.max(0, Math.min(100, value * 100))
+  return `${percent.toFixed(1)}%`
 }
 
 

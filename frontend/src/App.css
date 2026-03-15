@@ -734,6 +734,10 @@
   min-height: 130px;
 }
 
+.technical-score-card .technical-score-meter-marker {
+  transition: none;
+}
+
 .technical-score-card h3,
 .technical-data-card h3 {
   margin: 0;
@@ -2469,32 +2473,39 @@ th {
 }
 
 .headline-signal {
-  width: 0.72rem;
-  height: 0.72rem;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   flex-shrink: 0;
-  vertical-align: middle;
-  transform: translateY(0);
-  background: currentColor;
-  box-shadow: 0 0 0 2px color-mix(in hsl, currentColor 16%, transparent);
+  padding: 0.32rem 0.58rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: color-mix(in hsl, currentColor 12%, white 88%);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .headline-signal.tone-positive {
   color: #16a34a;
-  clip-path: polygon(50% 6%, 94% 94%, 6% 94%);
 }
 
 .headline-signal.tone-neutral {
   color: #ca8a04;
-  width: 0.56rem;
-  height: 0.56rem;
-  border-radius: 999px;
-  box-shadow: none;
 }
 
 .headline-signal.tone-negative {
   color: #dc2626;
-  clip-path: polygon(6% 6%, 94% 6%, 50% 94%);
+}
+
+.headline-signal-label {
+  color: inherit;
+}
+
+.headline-signal-confidence {
+  color: color-mix(in hsl, currentColor 82%, #0f172a 18%);
+  font-family: var(--mono-font);
 }
 
 .headline-item a,
