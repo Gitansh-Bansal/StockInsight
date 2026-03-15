@@ -720,6 +720,7 @@ function FundamentalSection({
 
   const data: FundamentalData = result.data
   const summary = llmSummary?.trim() || summarizeScore(result.score, 'fundamental')
+  const summaryBullets = extractBulletPoints(summary)
 
   const fundScorePercent = isFiniteNumber(result.score) ? clampPercent(result.score) : 50
   const fundScoreZone = isFiniteNumber(result.score)
@@ -743,7 +744,15 @@ function FundamentalSection({
         <h2>Fundamental Analysis</h2>
         <span className="score-tag">{formatScore(result.score)}</span>
       </header>
-      <p className="analysis-copy">{summary}</p>
+      {summaryBullets.length > 0 ? (
+        <ul className="analysis-bullets">
+          {summaryBullets.map((item, index) => (
+            <li key={`${item}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="analysis-copy">{summary}</p>
+      )}
 
       <div className="market-hero">
         <div className="fund-hero-metric">
