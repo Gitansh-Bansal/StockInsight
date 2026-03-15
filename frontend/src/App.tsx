@@ -184,7 +184,8 @@ function HomePage({ onSearch }: HomePageProps) {
     <section className="hero">
       <div className="hero-single">
         <p className="kicker">Live equity intelligence workspace</p>
-        <h1>One screen to inspect how a stock scores across core signals.</h1>
+        <h1>StockInsight</h1>
+        {/* <h1>One screen to inspect how a stock scores across core signals.</h1> */}
         <p>
           Search any ticker to open structured analysis sections for overall,
           fundamental, technical, and sentiment views.

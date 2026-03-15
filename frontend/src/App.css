@@ -3076,3 +3076,27 @@ th {
   }
 }
 
+
+
+/* changed here */
+.hero-search{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:12px;
+  margin-top:1rem;
+}
+
+.search-field input{
+  height:50px;
+  border-radius:12px;
+  border:1px solid #d1d5db;
+  padding:0 90px 0 14px;
+  font-size:15px;
+  transition:all .2s;
+}
+
+.search-field input:focus{
+  outline:none;
+  border-color:#2563eb;
+  box-shadow:0 0 0 3px rgba(37,99,235,.15);
+}
