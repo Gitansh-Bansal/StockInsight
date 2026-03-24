@@ -39,6 +39,7 @@ const ANALYSIS_TABS: Array<{ key: AnalysisTab; label: string }> = [
 
 type AppRoute =
   | { type: 'home' }
+  | { type: 'auth'; mode: AuthMode }
   | { type: 'stock'; ticker: string; tab: AnalysisTab }
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous'
@@ -60,9 +61,6 @@ function App() {
   const activeTicker = route.type === 'stock' ? route.ticker : null
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
-  const [authMode, setAuthMode] = useState<AuthMode>('login')
-  const [authNotice, setAuthNotice] = useState('')
-  const [pendingRoute, setPendingRoute] = useState<AppRoute | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -81,24 +79,12 @@ function App() {
         }
         setAuthUser(null)
         setAuthStatus('anonymous')
-        setAuthNotice('We could not restore your session. Please log in again.')
       })
 
     return () => {
       cancelled = true
     }
   }, [])
-
-  useEffect(() => {
-    if (authStatus !== 'anonymous' || route.type !== 'stock') {
-      return
-    }
-
-    setPendingRoute(route)
-    setAuthMode('login')
-    setAuthNotice(`Log in to access ${route.ticker} analysis.`)
-    navigate('/')
-  }, [authStatus, navigate, route])
 
   const handleSearch = useCallback(
     (input: string) => {
@@ -107,43 +93,30 @@ function App() {
         return
       }
 
-      if (authStatus !== 'authenticated') {
-        setPendingRoute({ type: 'stock', ticker, tab: 'overview' })
-        setAuthMode('login')
-        setAuthNotice(`Log in to open ${ticker} analysis.`)
-        navigate('/')
-        return
-      }
-
       navigate(`/stock/${encodeURIComponent(ticker)}/overview`)
     },
-    [authStatus, navigate],
+    [navigate],
   )
 
   const goHome = useCallback(() => {
     navigate('/')
   }, [navigate])
 
-  const completeAuthentication = useCallback(
-    (user: AuthUser) => {
-      setAuthUser(user)
-      setAuthStatus('authenticated')
-      setAuthNotice('')
-
-      if (pendingRoute?.type === 'stock') {
-        navigate(`/stock/${encodeURIComponent(pendingRoute.ticker)}/${pendingRoute.tab}`)
-        setPendingRoute(null)
-      }
+  const openAuthPage = useCallback(
+    (mode: AuthMode) => {
+      navigate(mode === 'signup' ? '/signup' : '/login')
     },
-    [navigate, pendingRoute],
+    [navigate],
   )
 
   const handleLogin = useCallback(
     async (values: { identifier: string; password: string }) => {
       const user = await loginUser(values.identifier, values.password)
-      completeAuthentication(user)
+      setAuthUser(user)
+      setAuthStatus('authenticated')
+      navigate('/')
     },
-    [completeAuthentication],
+    [navigate],
   )
 
   const handleSignup = useCallback(
@@ -154,9 +127,11 @@ function App() {
       confirmPassword: string
     }) => {
       const user = await registerUser(values)
-      completeAuthentication(user)
+      setAuthUser(user)
+      setAuthStatus('authenticated')
+      navigate('/')
     },
-    [completeAuthentication],
+    [navigate],
   )
 
   const handleLogout = useCallback(async () => {
@@ -165,9 +140,6 @@ function App() {
     } finally {
       setAuthUser(null)
       setAuthStatus('anonymous')
-      setAuthMode('login')
-      setPendingRoute(null)
-      setAuthNotice('You have been logged out.')
       navigate('/')
     }
   }, [navigate])
@@ -178,36 +150,32 @@ function App() {
         key={`${activeTicker ?? 'home'}-${authStatus}`}
         authStatus={authStatus}
         isAuthenticated={authStatus === 'authenticated'}
+        showSearch={route.type === 'stock'}
         user={authUser}
         initialSearch={activeTicker ?? ''}
-        onAuthModeChange={setAuthMode}
+        onAuthModeChange={openAuthPage}
         onLogout={handleLogout}
         onSearch={handleSearch}
         onHome={goHome}
       />
 
       <main className="content">
-        {route.type === 'stock' && authStatus === 'authenticated' ? (
+        {route.type === 'stock' ? (
           <AnalysisPage
             key={route.ticker}
             ticker={route.ticker}
             tab={route.tab}
             onTabChange={(tab) => navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`)}
           />
-        ) : (
-          <HomePage
-            authMode={authMode}
-            authNotice={authNotice}
-            authStatus={authStatus}
-            onAuthModeChange={(mode) => {
-              setAuthMode(mode)
-              setAuthNotice('')
-            }}
+        ) : route.type === 'auth' ? (
+          <AuthPage
+            authMode={route.mode}
+            onAuthModeChange={openAuthPage}
             onLogin={handleLogin}
-            onSearch={handleSearch}
             onSignup={handleSignup}
-            user={authUser}
           />
+        ) : (
+          <HomePage onSearch={handleSearch} user={authUser} />
         )}
       </main>
     </div>
@@ -222,6 +190,7 @@ type HeaderBarProps = {
   onLogout: () => void
   onSearch: (ticker: string) => void
   onHome: () => void
+  showSearch: boolean
   user: AuthUser | null
 }
 
@@ -233,6 +202,7 @@ function HeaderBar({
   onLogout,
   onSearch,
   onHome,
+  showSearch,
   user,
 }: HeaderBarProps) {
   const [isHidden, setIsHidden] = useState(false)
@@ -265,7 +235,7 @@ function HeaderBar({
       <button className="brand" type="button" onClick={onHome}>
         StockInsight
       </button>
-      {isAuthenticated ? (
+      {showSearch ? (
         <StockSearchForm
           className="top-search"
           initialValue={initialSearch}
@@ -309,43 +279,11 @@ function HeaderBar({
 }
 
 type HomePageProps = {
-  authMode: AuthMode
-  authNotice: string
-  authStatus: AuthStatus
-  onAuthModeChange: (mode: AuthMode) => void
-  onLogin: (values: { identifier: string; password: string }) => Promise<void>
   onSearch: (ticker: string) => void
-  onSignup: (values: {
-    username: string
-    email: string
-    password: string
-    confirmPassword: string
-  }) => Promise<void>
   user: AuthUser | null
 }
 
-function HomePage({
-  authMode,
-  authNotice,
-  authStatus,
-  onAuthModeChange,
-  onLogin,
-  onSearch,
-  onSignup,
-  user,
-}: HomePageProps) {
-  if (authStatus === 'loading') {
-    return (
-      <section className="hero">
-        <div className="hero-single">
-          <p className="kicker">Live equity intelligence workspace</p>
-          <h1>StockInsight</h1>
-          <p>Restoring your session and preparing the analysis workspace.</p>
-        </div>
-      </section>
-    )
-  }
-
+function HomePage({ onSearch, user }: HomePageProps) {
   if (user) {
     return (
       <section className="hero">
@@ -372,23 +310,63 @@ function HomePage({
   }
 
   return (
-    <section className="hero hero-grid">
+    <section className="hero">
       <div className="hero-single">
         <p className="kicker">Live equity intelligence workspace</p>
         <h1>StockInsight</h1>
         <p>
-          Sign in to search any company or ticker and open structured analysis
-          sections for overall, fundamental, technical, and sentiment views.
+          Search any company or ticker to open structured analysis sections for overall,
+          fundamental, technical, and sentiment views.
+        </p>
+        <h2>Start With A Company Or Ticker</h2>
+        <StockSearchForm
+          className="hero-search"
+          onSearch={onSearch}
+          placeholder="Enter a company name or ticker"
+          ariaLabel="Search for a company or ticker"
+          buttonLabel="Open Analysis"
+        />
+        <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
+      </div>
+    </section>
+  )
+}
+
+type AuthPageProps = {
+  authMode: AuthMode
+  onAuthModeChange: (mode: AuthMode) => void
+  onLogin: (values: { identifier: string; password: string }) => Promise<void>
+  onSignup: (values: {
+    username: string
+    email: string
+    password: string
+    confirmPassword: string
+  }) => Promise<void>
+}
+
+function AuthPage({
+  authMode,
+  onAuthModeChange,
+  onLogin,
+  onSignup,
+}: AuthPageProps) {
+  return (
+    <section className="hero hero-grid">
+      <div className="hero-single">
+        <p className="kicker">Session Access</p>
+        <h1>StockInsight</h1>
+        <p>
+          Sign in to save your session and return faster later. Public search and
+          analysis stay available from the landing page.
         </p>
         <div className="auth-feature-list">
-          <p>Secure session-based access backed by Django authentication.</p>
-          <p>Protected analysis routes so your workspace stays tied to your account.</p>
-          <p>Create an account once, then return with your existing session.</p>
+          <p>Use your username or email to access your account.</p>
+          <p>Create an account if you want a persistent signed-in session.</p>
+          <p>Return to the home page anytime to keep searching tickers publicly.</p>
         </div>
       </div>
       <AuthPanel
         mode={authMode}
-        notice={authNotice}
         onModeChange={onAuthModeChange}
         onLogin={onLogin}
         onSignup={onSignup}
@@ -2845,6 +2823,14 @@ function usePathRouter() {
 }
 
 function parseRoute(pathname: string): AppRoute {
+  if (/^\/login\/?$/i.test(pathname)) {
+    return { type: 'auth', mode: 'login' }
+  }
+
+  if (/^\/signup\/?$/i.test(pathname)) {
+    return { type: 'auth', mode: 'signup' }
+  }
+
   const match = pathname.match(/^\/stock\/([^/]+)(?:\/([^/]+))?\/?$/i)
   if (!match) {
     return { type: 'home' }
