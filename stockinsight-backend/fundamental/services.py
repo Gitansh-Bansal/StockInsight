@@ -16,6 +16,28 @@ def _safe_get(info: dict, *keys: str, default: Any = None) -> Any:
     return default
 
 
+def _normalize_percentage(val: Any, is_yield: bool = False) -> float | None:
+    """
+    yfinance is inconsistent with percentage units.
+    Sometimes it returns 0.015 for 1.5%, sometimes 1.5.
+    This helper tries to normalize to decimal format (0.015 for 1.5%).
+    """
+    if val is None:
+        return None
+    try:
+        f_val = float(val)
+        # Threshold for yields is lower as they are rarely > 10% (0.1) as decimals
+        # while growth can easily be > 1.0 (100%).
+        threshold = 0.05 if is_yield else 0.8
+        
+        if abs(f_val) > threshold:
+            # If it's already a whole number (e.g. 1.5 for 1.5%), divide by 100
+            return f_val / 100.0
+        return f_val
+    except (ValueError, TypeError):
+        return None
+
+
 def _compute_fundamental_score(info: dict) -> float:
     """
     Compute a 0-100 fundamental score from key metrics, 
@@ -38,7 +60,7 @@ def _compute_fundamental_score(info: dict) -> float:
     op_margin = _safe_get(info, "operatingMargins")
     net_margin = _safe_get(info, "profitMargins")
     de = _safe_get(info, "debtToEquity")
-    div_yield = _safe_get(info, "dividendYield")
+    div_yield = _normalize_percentage(_safe_get(info, "dividendYield"), is_yield=True)
     payout = _safe_get(info, "payoutRatio")
     
     # PE Fallback
@@ -140,8 +162,7 @@ def _compute_fundamental_score(info: dict) -> float:
         elif eps_growth >= 0.0: score += 3
     
     if div_yield is not None:
-        normalized_yield = div_yield / 100 if div_yield > 0.5 else div_yield
-        if normalized_yield > 0.02 and (payout is None or payout < 0.70):
+        if div_yield > 0.02 and (payout is None or payout < 0.70):
              score += 5
         elif payout is not None and payout > 0.85:
              score -= 5
@@ -194,7 +215,11 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             "currentPrice": _safe_get(info, "currentPrice", "regularMarketPrice"),
             "currency": _safe_get(info, "currency", default="USD"),
             "marketCap": _safe_get(info, "marketCap"),
-            "enterpriseValue": _safe_get(info, "enterpriseValue"),
+            "enterpriseValue": _safe_get(info, "enterpriseValue") or (
+                (_safe_get(info, "marketCap") or 0) + 
+                (_safe_get(info, "totalDebt") or 0) - 
+                (_safe_get(info, "totalCash") or 0)
+            ) or None,
             "beta": _safe_get(info, "beta"),
 
             # Valuation Metrics
@@ -226,12 +251,16 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             "operatingCashflow": _safe_get(info, "operatingCashflow"),
 
             # Growth
-            "revenueGrowth": _safe_get(info, "revenueGrowth"),
-            "earningsGrowth": _safe_get(info, "earningsGrowth"),
+            "revenueGrowth": _normalize_percentage(_safe_get(info, "revenueGrowth")),
+            "earningsGrowth": _normalize_percentage(_safe_get(info, "earningsGrowth")),
             "revenuePerShare": _safe_get(info, "revenuePerShare"),
 
             # Dividends
-            "dividendYield": _safe_get(info, "dividendYield"),
+            "dividendYield": (
+                _safe_get(info, "dividendRate") / _safe_get(info, "currentPrice", "regularMarketPrice")
+                if _safe_get(info, "dividendRate") and _safe_get(info, "currentPrice", "regularMarketPrice")
+                else _normalize_percentage(_safe_get(info, "dividendYield"), is_yield=True)
+            ),
             "dividendRate": _safe_get(info, "dividendRate"),
             "payoutRatio": _safe_get(info, "payoutRatio"),
 
