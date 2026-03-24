@@ -3,6 +3,7 @@ Analysis API: single entry point for the frontend. GET /api/analysis/{ticker}/
 """
 from ninja import Router
 
+from analysis.search import search_companies
 from analysis.services import run_full_analysis
 from technical.services import get_chart_data
 
@@ -37,3 +38,18 @@ def fetch_chart(
     Fetch specific fine-grained chart data based on duration.
     """
     return get_chart_data(ticker=ticker, duration=duration)
+
+
+@router.get("/search")
+def search_symbols(
+    request,
+    q: str = "",
+    limit: int = 8,
+):
+    """
+    Return company/ticker suggestions for the search bar.
+    """
+    return {
+        "query": q.strip(),
+        "suggestions": search_companies(q, limit=limit),
+    }

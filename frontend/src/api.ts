@@ -1,4 +1,4 @@
-import type { AnalysisResponse, OhlcvPoint } from './types'
+import type { AnalysisResponse, OhlcvPoint, SearchSuggestion } from './types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
   /\/$/,
@@ -6,6 +6,8 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.re
 )
 
 const inFlightAnalysisRequests = new Map<string, Promise<AnalysisResponse>>()
+const inFlightSearchRequests = new Map<string, Promise<SearchSuggestion[]>>()
+const searchSuggestionCache = new Map<string, SearchSuggestion[]>()
 
 function apiUrl(path: string): string {
   if (apiBaseUrl) {
@@ -59,4 +61,61 @@ export async function fetchChartData(
     throw new Error(payload.error ?? 'Failed to load chart data.')
   }
   return payload
+}
+
+export async function fetchSearchSuggestions(
+  query: string,
+  limit = 8,
+  signal?: AbortSignal,
+): Promise<SearchSuggestion[]> {
+  const cleanQuery = query.trim()
+  if (!cleanQuery) {
+    return []
+  }
+
+  const requestKey = `${cleanQuery.toLowerCase()}::${limit}`
+  if (!signal) {
+    const cached = searchSuggestionCache.get(requestKey)
+    if (cached) {
+      return cached
+    }
+
+    const existingRequest = inFlightSearchRequests.get(requestKey)
+    if (existingRequest) {
+      return existingRequest
+    }
+  }
+
+  const requestPromise = (async () => {
+    const url = apiUrl(
+      `/api/search?q=${encodeURIComponent(cleanQuery)}&limit=${encodeURIComponent(String(limit))}`,
+    )
+    const response = await fetch(url, { signal })
+    const payload = (await response.json()) as {
+      error?: string
+      suggestions?: SearchSuggestion[]
+    }
+
+    if (!response.ok) {
+      throw new Error(payload.error ?? 'Failed to load search suggestions.')
+    }
+
+    return Array.isArray(payload.suggestions) ? payload.suggestions : []
+  })()
+
+  if (!signal) {
+    inFlightSearchRequests.set(requestKey, requestPromise)
+  }
+
+  try {
+    const suggestions = await requestPromise
+    if (!signal) {
+      searchSuggestionCache.set(requestKey, suggestions)
+    }
+    return suggestions
+  } finally {
+    if (!signal) {
+      inFlightSearchRequests.delete(requestKey)
+    }
+  }
 }

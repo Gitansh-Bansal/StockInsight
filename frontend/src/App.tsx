@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
 import type { ReactElement } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
@@ -8,6 +7,7 @@ import {
   LineChart, Line
 } from 'recharts'
 import './App.css'
+import { StockSearchForm } from './components/StockSearchForm'
 import { fetchAnalysis } from './api'
 import type {
   AnalysisResponse,
@@ -108,14 +108,8 @@ function HeaderBar({
   onSearch,
   onHome,
 }: HeaderBarProps) {
-  const [searchValue, setSearchValue] = useState(initialSearch)
   const [isHidden, setIsHidden] = useState(false)
   const lastScrollYRef = useRef(0)
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    onSearch(searchValue)
-  }
 
   useEffect(() => {
     const onScroll = () => {
@@ -152,17 +146,14 @@ function HeaderBar({
           </button>
         </div>
       ) : (
-        <form className="top-search" onSubmit={handleSubmit}>
-          <div className="search-field">
-            <input
-              value={searchValue}
-              onChange={(event) => setSearchValue(event.target.value)}
-              placeholder="Search ticker (AAPL, MSFT, NVDA)"
-              aria-label="Search ticker symbol"
-            />
-          </div>
-          <button type="submit">Search</button>
-        </form>
+        <StockSearchForm
+          className="top-search"
+          initialValue={initialSearch}
+          onSearch={onSearch}
+          placeholder="Search company or ticker"
+          ariaLabel="Search company or ticker"
+          buttonLabel="Search"
+        />
       )}
     </header>
   )
@@ -173,13 +164,6 @@ type HomePageProps = {
 }
 
 function HomePage({ onSearch }: HomePageProps) {
-  const [tickerInput, setTickerInput] = useState('')
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    onSearch(tickerInput)
-  }
-
   return (
     <section className="hero">
       <div className="hero-single">
@@ -187,22 +171,18 @@ function HomePage({ onSearch }: HomePageProps) {
         <h1>StockInsight</h1>
         {/* <h1>One screen to inspect how a stock scores across core signals.</h1> */}
         <p>
-          Search any ticker to open structured analysis sections for overall,
+          Search any company or ticker to open structured analysis sections for overall,
           fundamental, technical, and sentiment views.
         </p>
-        <h2>Start With A Ticker</h2>
-        <form className="hero-search" onSubmit={handleSubmit}>
-          <div className="search-field">
-            <input
-              value={tickerInput}
-              onChange={(event) => setTickerInput(event.target.value)}
-              placeholder="Enter ticker"
-              aria-label="Ticker symbol input"
-            />
-          </div>
-          <button type="submit">Open Analysis</button>
-        </form>
-        <p>Examples: AAPL, TSLA, AMZN, JPM, META.</p>
+        <h2>Start With A Company Or Ticker</h2>
+        <StockSearchForm
+          className="hero-search"
+          onSearch={onSearch}
+          placeholder="Enter a company name or ticker"
+          ariaLabel="Search for a company or ticker"
+          buttonLabel="Open Analysis"
+        />
+        <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
       </div>
     </section>
   )
