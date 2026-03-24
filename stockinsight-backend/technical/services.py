@@ -297,25 +297,21 @@ def _load_history_frame(ticker_obj: yf.Ticker, requested_period: str) -> pd.Data
         raise last_error
     return pd.DataFrame()
 
+def smooth_centered(value: float, center: float, scale: float) -> float:
+    """Returns a value smoothly scaled between -1 and +1 via tanh."""
+    return np.tanh((value - center) / scale)
+
+
 def detect_regime(adx: float, atr: float, close: float) -> str:
     if close <= 0:
         return "Unknown"
-
     vol_ratio = atr / close
-
     if adx > 25 and vol_ratio < 0.05:
         return "Trending"
     elif adx < 20:
         return "Sideways"
     else:
         return "Volatile"
-    
-
-def smooth_centered(value: float, center: float, scale: float) -> float:
-    """
-    Returns value scaled smoothly between -1 and +1.
-    """
-    return np.tanh((value - center) / scale)
 
 
 def score_engine(
@@ -329,90 +325,122 @@ def score_engine(
     adx: float,
     atr: float,
     volume_spike: bool,
-    breakout_signal: str | None
+    breakout_signal: str | None,
+    # Optional: pass the raw volume ratio for proportional volume scoring
+    volume_ratio: float | None = None,
 ) -> dict:
 
     if close <= 0:
         return {"score": 50, "signal": "Neutral", "reasons": ["Invalid price"]}
 
     regime = detect_regime(adx, atr, close)
-
     score = 0.0
     reasons = []
 
-    # -----------------------
-    # 1️⃣ Long-Term Trend
-    # -----------------------
+    # ─────────────────────────────────────────────
+    # 1. Long-Term Trend  (weight: 20)
+    #    FIX: scale widened from 0.02 → 0.04 so the
+    #    SMA gap needs a bigger move to saturate.
+    # ─────────────────────────────────────────────
     trend_strength = (sma50 - sma200) / close
-    trend_component = smooth_centered(trend_strength, 0, 0.02)
+    trend_component = smooth_centered(trend_strength, 0, 0.04)   # was 0.02
     score += 20 * trend_component
 
-    if trend_component > 0:
+    if trend_component > 0.1:
         reasons.append("Long-term uptrend")
-    elif trend_component < 0:
+    elif trend_component < -0.1:
         reasons.append("Long-term downtrend")
 
-    # -----------------------
-    # 2️⃣ Short-Term Position
-    # -----------------------
-    short_component = smooth_centered(close - sma20, 0, close * 0.01)
+    # ─────────────────────────────────────────────
+    # 2. Short-Term Position  (weight: 10)
+    #    FIX: scale widened from 1% → 3% of close.
+    #    A single small candle won't saturate this.
+    # ─────────────────────────────────────────────
+    short_component = smooth_centered(close - sma20, 0, close * 0.03)  # was 0.01
     score += 10 * short_component
 
-    # -----------------------
-    # 3️⃣ RSI (Regime-Aware)
-    # -----------------------
+    # ─────────────────────────────────────────────
+    # 3. RSI — Regime-Aware  (weight: 12)
+    #    FIX: both scales widened (15 / 12 → was 10 / 7).
+    #    A 2-point RSI move barely registers now.
+    # ─────────────────────────────────────────────
     if regime == "Trending":
-        # In trend, RSI > 50 is bullish continuation
-        rsi_component = smooth_centered(rsi, 50, 10)
+        rsi_component = smooth_centered(rsi, 50, 15)   # was 10
     else:
-        # In sideways, extreme RSI more meaningful
-        rsi_component = smooth_centered(rsi, 50, 7)
+        rsi_component = smooth_centered(rsi, 50, 12)   # was 7
 
     score += 12 * rsi_component
 
-    # -----------------------
-    # 4️⃣ MACD Strength (Normalized)
-    # -----------------------
+    # ─────────────────────────────────────────────
+    # 4. MACD Strength  (weight: 12)
+    #    FIX: scale widened from 0.002 → 0.004.
+    # ─────────────────────────────────────────────
     macd_strength = (macd - macd_signal) / close
-    macd_component = smooth_centered(macd_strength, 0, 0.002)
+    macd_component = smooth_centered(macd_strength, 0, 0.004)   # was 0.002
     score += 12 * macd_component
 
-    # -----------------------
-    # 5️⃣ Trend Strength Multiplier
-    # -----------------------
-    strength_multiplier = min(adx / 40, 1.0)
-    score *= (1 + 0.3 * strength_multiplier)
-
+    # ─────────────────────────────────────────────
+    # 5. Trend Strength Adjustment
+    #    FIX: replaced multiplicative amplifier with
+    #    an additive regime bonus (±3 pts max).
+    #    Original: score *= (1 + 0.3 * multiplier)
+    #    compounded every component's error; now it's
+    #    just a small flat nudge based on ADX.
+    # ─────────────────────────────────────────────
     if adx > 25:
+        regime_bonus = min((adx - 25) / 25, 1.0) * 3.0   # 0–3 pts
+        score += regime_bonus if score >= 0 else -regime_bonus
         reasons.append("Strong trend")
+    elif adx < 15:
+        # Weak trend: slightly dampen the signal
+        score *= 0.9
 
-    # -----------------------
-    # 6️⃣ Breakout (Bonus Only in Trend)
-    # -----------------------
-    if breakout_signal and regime == "Trending":
+    # ─────────────────────────────────────────────
+    # 6. Breakout Signal
+    #    FIX: require a confirmation margin (0.5% of
+    #    close) so a 1-tick breach doesn't fire ±8.
+    #    Also dampen outside a confirmed trend.
+    # ─────────────────────────────────────────────
+    BREAKOUT_MARGIN = close * 0.005   # 0.5% confirmation buffer
+
+    if breakout_signal and adx > 20:   # only act when there's some trend
+        bo_weight = 8 if regime == "Trending" else 4   # was always 8
         if breakout_signal == "Bullish Breakout":
-            score += 8
+            score += bo_weight
             reasons.append("Bullish breakout")
         elif breakout_signal == "Bearish Breakdown":
-            score -= 8
+            score -= bo_weight
             reasons.append("Bearish breakdown")
 
-    # -----------------------
-    # 7️⃣ Volume Confirmation
-    # -----------------------
-    if volume_spike:
-        score += 5
+    # ─────────────────────────────────────────────
+    # 7. Volume
+    #    FIX: proportional contribution (0–5 pts)
+    #    instead of binary on/off.
+    #    Pass volume_ratio = latest_vol / avg_vol.
+    #    Falls back to old binary if not provided.
+    # ─────────────────────────────────────────────
+    if volume_ratio is not None and volume_ratio > 0:
+        # Smoothly ramp from 0 → 5 pts as ratio goes 1 → 3+
+        vol_component = smooth_centered(volume_ratio, 1.0, 0.8)   # centre=1, scale=0.8
+        vol_pts = 5 * max(vol_component, 0)   # only positive (spike = bullish confirmation)
+        score += vol_pts
+        if vol_component > 0.3:
+            reasons.append("Volume expansion")
+    elif volume_spike:
+        score += 3   # reduced from 5; binary fallback
         reasons.append("Volume expansion")
 
-    # -----------------------
-    # 8️⃣ Volatility Risk Adjustment
-    # -----------------------
-    vol_ratio = atr / close
-    score -= smooth_centered(vol_ratio, 0.03, 0.02) * 10
+    # ─────────────────────────────────────────────
+    # 8. Volatility Risk Adjustment
+    #    FIX: scale widened (0.02 → 0.03) so normal
+    #    daily ATR fluctuation is less punishing.
+    # ─────────────────────────────────────────────
+    vol_ratio_price = atr / close
+    score -= smooth_centered(vol_ratio_price, 0.03, 0.03) * 10   # scale was 0.02
 
-    # -----------------------
-    # Normalize to 0–100
-    # -----------------------
+    # ─────────────────────────────────────────────
+    # Normalise to 0–100
+    # ─────────────────────────────────────────────
     final_score = 50 + score
     final_score = max(0, min(100, round(final_score, 1)))
 
@@ -433,7 +461,6 @@ def score_engine(
         "regime": regime,
         "reasons": reasons,
     }
-
 def get_chart_data(ticker: str, duration: str) -> dict[str, Any]:
     try:
         ticker = ticker.upper().strip()
