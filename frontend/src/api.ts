@@ -1,4 +1,4 @@
-import type { AnalysisResponse, OhlcvPoint, SearchSuggestion } from './types'
+import type { AnalysisResponse, AuthUser, OhlcvPoint, SearchSuggestion } from './types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
   /\/$/,
@@ -8,12 +8,121 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.re
 const inFlightAnalysisRequests = new Map<string, Promise<AnalysisResponse>>()
 const inFlightSearchRequests = new Map<string, Promise<SearchSuggestion[]>>()
 const searchSuggestionCache = new Map<string, SearchSuggestion[]>()
+let csrfTokenCache = ''
 
 function apiUrl(path: string): string {
   if (apiBaseUrl) {
     return `${apiBaseUrl}${path}`
   }
   return path
+}
+
+async function readJson(response: Response): Promise<Record<string, unknown>> {
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) {
+    return {}
+  }
+
+  try {
+    return (await response.json()) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+async function ensureCsrfToken(forceRefresh = false): Promise<string> {
+  if (!forceRefresh && csrfTokenCache) {
+    return csrfTokenCache
+  }
+
+  const response = await fetch(apiUrl('/api/auth/csrf'), {
+    credentials: 'include',
+  })
+  const payload = await readJson(response)
+  const token = typeof payload.csrfToken === 'string' ? payload.csrfToken : ''
+
+  if (!response.ok || !token) {
+    throw new Error('Unable to initialize secure session.')
+  }
+
+  csrfTokenCache = token
+  return token
+}
+
+async function apiRequest<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const method = (init.method ?? 'GET').toUpperCase()
+  const headers = new Headers(init.headers)
+
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    headers.set('X-CSRFToken', await ensureCsrfToken())
+  }
+
+  const response = await fetch(apiUrl(path), {
+    ...init,
+    credentials: 'include',
+    headers,
+  })
+
+  const payload = await readJson(response)
+  if (!response.ok) {
+    throw new Error(
+      typeof payload.error === 'string' ? payload.error : 'Request failed.',
+    )
+  }
+
+  return payload as T
+}
+
+type AuthEnvelope = {
+  user: AuthUser
+}
+
+type CurrentUserEnvelope = {
+  authenticated: boolean
+  user: AuthUser | null
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser | null> {
+  const payload = await apiRequest<CurrentUserEnvelope>('/api/auth/me')
+  return payload.authenticated ? payload.user : null
+}
+
+export async function loginUser(
+  identifier: string,
+  password: string,
+): Promise<AuthUser> {
+  const payload = await apiRequest<AuthEnvelope>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ identifier, password }),
+  })
+  return payload.user
+}
+
+export async function registerUser(input: {
+  username: string
+  email: string
+  password: string
+  confirmPassword: string
+}): Promise<AuthUser> {
+  const payload = await apiRequest<AuthEnvelope>('/api/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return payload.user
+}
+
+export async function logoutUser(): Promise<void> {
+  await apiRequest('/api/auth/logout', {
+    method: 'POST',
+  })
+  csrfTokenCache = ''
 }
 
 export async function fetchAnalysis(
@@ -27,17 +136,9 @@ export async function fetchAnalysis(
   }
 
   const requestPromise = (async () => {
-    const url = apiUrl(
+    return apiRequest<AnalysisResponse>(
       `/api/analysis/${encodeURIComponent(cleanTicker)}?include_report=true`,
     )
-
-    const response = await fetch(url)
-    const payload = (await response.json()) as AnalysisResponse
-
-    if (!response.ok) {
-      throw new Error(payload.error ?? 'Failed to load analysis.')
-    }
-    return payload
   })()
 
   inFlightAnalysisRequests.set(requestKey, requestPromise)
@@ -52,15 +153,9 @@ export async function fetchChartData(
   ticker: string,
   duration: string,
 ): Promise<{ ohlcv: OhlcvPoint[]; currency?: string }> {
-  const url = apiUrl(
+  return apiRequest<{ ohlcv: OhlcvPoint[]; currency?: string }>(
     `/api/analysis/chart/${encodeURIComponent(ticker.trim().toUpperCase())}?duration=${encodeURIComponent(duration)}`,
   )
-  const response = await fetch(url)
-  const payload = await response.json()
-  if (!response.ok) {
-    throw new Error(payload.error ?? 'Failed to load chart data.')
-  }
-  return payload
 }
 
 export async function fetchSearchSuggestions(
@@ -87,18 +182,12 @@ export async function fetchSearchSuggestions(
   }
 
   const requestPromise = (async () => {
-    const url = apiUrl(
-      `/api/search?q=${encodeURIComponent(cleanQuery)}&limit=${encodeURIComponent(String(limit))}`,
-    )
-    const response = await fetch(url, { signal })
-    const payload = (await response.json()) as {
-      error?: string
+    const payload = await apiRequest<{
       suggestions?: SearchSuggestion[]
-    }
-
-    if (!response.ok) {
-      throw new Error(payload.error ?? 'Failed to load search suggestions.')
-    }
+    }>(
+      `/api/search?q=${encodeURIComponent(cleanQuery)}&limit=${encodeURIComponent(String(limit))}`,
+      { signal },
+    )
 
     return Array.isArray(payload.suggestions) ? payload.suggestions : []
   })()

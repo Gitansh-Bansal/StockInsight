@@ -1,4 +1,11 @@
 export type NullableScore = number | null
+export type AuthMode = 'login' | 'signup'
+
+export interface AuthUser {
+  id: number
+  username: string
+  email: string
+}
 
 export interface OverviewData {
   fundamentalScore: NullableScore

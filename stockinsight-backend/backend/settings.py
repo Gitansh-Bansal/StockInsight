@@ -47,7 +47,7 @@ SECRET_KEY = 'django-insecure-g)--+orh3y7p4wmpkp&lql9z3=t1)&n+*^aq&t!9!bzy+#rcqk
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
 
 # Application definition
@@ -72,8 +72,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware', # Put this at the top
-    'django.middleware.common.CommonMiddleware',
-
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -154,7 +152,13 @@ STATIC_URL = 'static/'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173", # Default Vite port
     "http://localhost:3000", # Default CRA port
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
 ]
+
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
 
 
 LOGGING = {

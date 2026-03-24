@@ -20,10 +20,12 @@ from django.urls import path
 from ninja import NinjaAPI
 
 from analysis.api import router as analysis_router
+from backend.auth_api import router as auth_router
 
 api = NinjaAPI()
 
 api.add_router("", analysis_router)
+api.add_router("/auth", auth_router)
 
 
 @api.get("/health")

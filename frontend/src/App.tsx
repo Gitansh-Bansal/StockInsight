@@ -7,10 +7,13 @@ import {
   LineChart, Line
 } from 'recharts'
 import './App.css'
+import { AuthPanel } from './components/AuthPanel'
 import { StockSearchForm } from './components/StockSearchForm'
-import { fetchAnalysis } from './api'
+import { fetchAnalysis, fetchCurrentUser, loginUser, logoutUser, registerUser } from './api'
 import type {
   AnalysisResponse,
+  AuthMode,
+  AuthUser,
   FundamentalData,
   OhlcvPoint,
   ReportSections,
@@ -38,6 +41,8 @@ type AppRoute =
   | { type: 'home' }
   | { type: 'stock'; ticker: string; tab: AnalysisTab }
 
+type AuthStatus = 'loading' | 'authenticated' | 'anonymous'
+
 const compactFormatter = new Intl.NumberFormat('en-US', {
   notation: 'compact',
   maximumFractionDigits: 2,
@@ -53,6 +58,47 @@ function App() {
   const { pathname, navigate } = usePathRouter()
   const route = useMemo(() => parseRoute(pathname), [pathname])
   const activeTicker = route.type === 'stock' ? route.ticker : null
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [authMode, setAuthMode] = useState<AuthMode>('login')
+  const [authNotice, setAuthNotice] = useState('')
+  const [pendingRoute, setPendingRoute] = useState<AppRoute | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetchCurrentUser()
+      .then((user) => {
+        if (cancelled) {
+          return
+        }
+        setAuthUser(user)
+        setAuthStatus(user ? 'authenticated' : 'anonymous')
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+        setAuthUser(null)
+        setAuthStatus('anonymous')
+        setAuthNotice('We could not restore your session. Please log in again.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (authStatus !== 'anonymous' || route.type !== 'stock') {
+      return
+    }
+
+    setPendingRoute(route)
+    setAuthMode('login')
+    setAuthNotice(`Log in to access ${route.ticker} analysis.`)
+    navigate('/')
+  }, [authStatus, navigate, route])
 
   const handleSearch = useCallback(
     (input: string) => {
@@ -60,27 +106,88 @@ function App() {
       if (!ticker) {
         return
       }
+
+      if (authStatus !== 'authenticated') {
+        setPendingRoute({ type: 'stock', ticker, tab: 'overview' })
+        setAuthMode('login')
+        setAuthNotice(`Log in to open ${ticker} analysis.`)
+        navigate('/')
+        return
+      }
+
       navigate(`/stock/${encodeURIComponent(ticker)}/overview`)
     },
-    [navigate],
+    [authStatus, navigate],
   )
 
   const goHome = useCallback(() => {
     navigate('/')
   }, [navigate])
 
+  const completeAuthentication = useCallback(
+    (user: AuthUser) => {
+      setAuthUser(user)
+      setAuthStatus('authenticated')
+      setAuthNotice('')
+
+      if (pendingRoute?.type === 'stock') {
+        navigate(`/stock/${encodeURIComponent(pendingRoute.ticker)}/${pendingRoute.tab}`)
+        setPendingRoute(null)
+      }
+    },
+    [navigate, pendingRoute],
+  )
+
+  const handleLogin = useCallback(
+    async (values: { identifier: string; password: string }) => {
+      const user = await loginUser(values.identifier, values.password)
+      completeAuthentication(user)
+    },
+    [completeAuthentication],
+  )
+
+  const handleSignup = useCallback(
+    async (values: {
+      username: string
+      email: string
+      password: string
+      confirmPassword: string
+    }) => {
+      const user = await registerUser(values)
+      completeAuthentication(user)
+    },
+    [completeAuthentication],
+  )
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutUser()
+    } finally {
+      setAuthUser(null)
+      setAuthStatus('anonymous')
+      setAuthMode('login')
+      setPendingRoute(null)
+      setAuthNotice('You have been logged out.')
+      navigate('/')
+    }
+  }, [navigate])
+
   return (
     <div className="app-shell">
       <HeaderBar
-        key={activeTicker ?? 'home'}
+        key={`${activeTicker ?? 'home'}-${authStatus}`}
+        authStatus={authStatus}
+        isAuthenticated={authStatus === 'authenticated'}
+        user={authUser}
         initialSearch={activeTicker ?? ''}
-        isHome={route.type === 'home'}
+        onAuthModeChange={setAuthMode}
+        onLogout={handleLogout}
         onSearch={handleSearch}
         onHome={goHome}
       />
 
       <main className="content">
-        {route.type === 'stock' ? (
+        {route.type === 'stock' && authStatus === 'authenticated' ? (
           <AnalysisPage
             key={route.ticker}
             ticker={route.ticker}
@@ -88,7 +195,19 @@ function App() {
             onTabChange={(tab) => navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`)}
           />
         ) : (
-          <HomePage onSearch={handleSearch} />
+          <HomePage
+            authMode={authMode}
+            authNotice={authNotice}
+            authStatus={authStatus}
+            onAuthModeChange={(mode) => {
+              setAuthMode(mode)
+              setAuthNotice('')
+            }}
+            onLogin={handleLogin}
+            onSearch={handleSearch}
+            onSignup={handleSignup}
+            user={authUser}
+          />
         )}
       </main>
     </div>
@@ -96,17 +215,25 @@ function App() {
 }
 
 type HeaderBarProps = {
+  authStatus: AuthStatus
+  isAuthenticated: boolean
   initialSearch: string
-  isHome: boolean
+  onAuthModeChange: (mode: AuthMode) => void
+  onLogout: () => void
   onSearch: (ticker: string) => void
   onHome: () => void
+  user: AuthUser | null
 }
 
 function HeaderBar({
+  authStatus,
+  isAuthenticated,
   initialSearch,
-  isHome,
+  onAuthModeChange,
+  onLogout,
   onSearch,
   onHome,
+  user,
 }: HeaderBarProps) {
   const [isHidden, setIsHidden] = useState(false)
   const lastScrollYRef = useRef(0)
@@ -138,14 +265,7 @@ function HeaderBar({
       <button className="brand" type="button" onClick={onHome}>
         StockInsight
       </button>
-      {isHome ? (
-        <div className="top-actions">
-          <button type="button">Log In</button>
-          <button type="button" className="secondary">
-            Create Account
-          </button>
-        </div>
-      ) : (
+      {isAuthenticated ? (
         <StockSearchForm
           className="top-search"
           initialValue={initialSearch}
@@ -154,36 +274,125 @@ function HeaderBar({
           ariaLabel="Search company or ticker"
           buttonLabel="Search"
         />
+      ) : (
+        <div className="top-search-placeholder" aria-hidden="true" />
       )}
+      <div className="top-actions">
+        {authStatus === 'loading' ? (
+          <span className="session-chip">Restoring session...</span>
+        ) : isAuthenticated ? (
+          <>
+            <span className="session-chip">
+              Signed in as <strong>{user?.username ?? 'user'}</strong>
+            </span>
+            <button type="button" className="secondary" onClick={onLogout}>
+              Log Out
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={() => onAuthModeChange('login')}>
+              Log In
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => onAuthModeChange('signup')}
+            >
+              Create Account
+            </button>
+          </>
+        )}
+      </div>
     </header>
   )
 }
 
 type HomePageProps = {
+  authMode: AuthMode
+  authNotice: string
+  authStatus: AuthStatus
+  onAuthModeChange: (mode: AuthMode) => void
+  onLogin: (values: { identifier: string; password: string }) => Promise<void>
   onSearch: (ticker: string) => void
+  onSignup: (values: {
+    username: string
+    email: string
+    password: string
+    confirmPassword: string
+  }) => Promise<void>
+  user: AuthUser | null
 }
 
-function HomePage({ onSearch }: HomePageProps) {
+function HomePage({
+  authMode,
+  authNotice,
+  authStatus,
+  onAuthModeChange,
+  onLogin,
+  onSearch,
+  onSignup,
+  user,
+}: HomePageProps) {
+  if (authStatus === 'loading') {
+    return (
+      <section className="hero">
+        <div className="hero-single">
+          <p className="kicker">Live equity intelligence workspace</p>
+          <h1>StockInsight</h1>
+          <p>Restoring your session and preparing the analysis workspace.</p>
+        </div>
+      </section>
+    )
+  }
+
+  if (user) {
+    return (
+      <section className="hero">
+        <div className="hero-single">
+          <p className="kicker">Live equity intelligence workspace</p>
+          <h1>StockInsight</h1>
+          <p>
+            Welcome back, {user.username}. Search any company or ticker to open
+            structured analysis sections for overall, fundamental, technical, and
+            sentiment views.
+          </p>
+          <h2>Start With A Company Or Ticker</h2>
+          <StockSearchForm
+            className="hero-search"
+            onSearch={onSearch}
+            placeholder="Enter a company name or ticker"
+            ariaLabel="Search for a company or ticker"
+            buttonLabel="Open Analysis"
+          />
+          <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
+        </div>
+      </section>
+    )
+  }
+
   return (
-    <section className="hero">
+    <section className="hero hero-grid">
       <div className="hero-single">
         <p className="kicker">Live equity intelligence workspace</p>
         <h1>StockInsight</h1>
-        {/* <h1>One screen to inspect how a stock scores across core signals.</h1> */}
         <p>
-          Search any company or ticker to open structured analysis sections for overall,
-          fundamental, technical, and sentiment views.
+          Sign in to search any company or ticker and open structured analysis
+          sections for overall, fundamental, technical, and sentiment views.
         </p>
-        <h2>Start With A Company Or Ticker</h2>
-        <StockSearchForm
-          className="hero-search"
-          onSearch={onSearch}
-          placeholder="Enter a company name or ticker"
-          ariaLabel="Search for a company or ticker"
-          buttonLabel="Open Analysis"
-        />
-        <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
+        <div className="auth-feature-list">
+          <p>Secure session-based access backed by Django authentication.</p>
+          <p>Protected analysis routes so your workspace stays tied to your account.</p>
+          <p>Create an account once, then return with your existing session.</p>
+        </div>
       </div>
+      <AuthPanel
+        mode={authMode}
+        notice={authNotice}
+        onModeChange={onAuthModeChange}
+        onLogin={onLogin}
+        onSignup={onSignup}
+      />
     </section>
   )
 }
