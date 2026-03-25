@@ -908,7 +908,14 @@ function FundamentalSection({
   return (
     <article className="panel reveal">
       <header className="panel-head">
-        <h2>Fundamental Analysis</h2>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <h2 style={{ margin: 0 }}>Fundamental Analysis</h2>
+          {data.sector && (
+            <span style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: '0.1rem' }}>
+              Sector: {data.sector}{data.industry ? ` • ${data.industry}` : ''}
+            </span>
+          )}
+        </div>
         <span className="score-tag">{formatScore(result.score)}</span>
       </header>
       {summaryBullets.length > 0 ? (
@@ -1004,6 +1011,8 @@ function FundamentalSection({
           </div>
         </div>
 
+
+
         {/* Card 4: Profitability */}
         <div className="fund-card">
           <h3>Profitability</h3>
@@ -1061,6 +1070,60 @@ function FundamentalSection({
             </div>
           </div>
         </div>
+
+        {/* Card: Sector P/E Comparison */}
+        {data.sectorPeersAnalysis && (
+          <div className="fund-card" style={{ gridColumn: '1 / -1' }}>
+            <h3>Sector P/E Comparison</h3>
+            <div className="sector-pe-table-container" style={{ marginTop: '1rem', overflowX: 'auto' }}>
+              <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)' }}>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>Metric</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>Raw Value</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>Sector Mean</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>Relative Standing</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '0.75rem 0.5rem', fontWeight: 500 }}>Trailing P/E</td>
+                    <td style={{ padding: '0.75rem 0.5rem' }}>{formatNumber(data.sectorPeersAnalysis.trailing.rawValue)}</td>
+                    <td style={{ padding: '0.75rem 0.5rem' }}>{formatNumber(data.sectorPeersAnalysis.trailing.sectorMean)}</td>
+                    <td style={{ padding: '0.75rem 0.5rem' }}>
+                      <span style={{ 
+                        padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, 
+                        backgroundColor: 'rgba(0,0,0,0.05)',
+                        color: data.sectorPeersAnalysis.trailing.relativeStandingLabel.toLowerCase().includes('under') ? '#10b981' : data.sectorPeersAnalysis.trailing.relativeStandingLabel.toLowerCase().includes('over') ? '#ef4444' : 'inherit' 
+                      }}>
+                        {data.sectorPeersAnalysis.trailing.relativeStandingLabel}
+                        {data.sectorPeersAnalysis.trailing.relativeStandingScore != null ? ` (${data.sectorPeersAnalysis.trailing.relativeStandingScore > 0 ? '+' : ''}${data.sectorPeersAnalysis.trailing.relativeStandingScore.toFixed(2)})` : ''}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '0.75rem 0.5rem', fontWeight: 500 }}>Forward P/E</td>
+                    <td style={{ padding: '0.75rem 0.5rem' }}>{formatNumber(data.sectorPeersAnalysis.forward.rawValue)}</td>
+                    <td style={{ padding: '0.75rem 0.5rem' }}>{formatNumber(data.sectorPeersAnalysis.forward.sectorMean)}</td>
+                    <td style={{ padding: '0.75rem 0.5rem' }}>
+                      <span style={{ 
+                        padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, 
+                        backgroundColor: 'rgba(0,0,0,0.05)',
+                        color: data.sectorPeersAnalysis.forward.relativeStandingLabel.toLowerCase().includes('under') ? '#10b981' : data.sectorPeersAnalysis.forward.relativeStandingLabel.toLowerCase().includes('over') ? '#ef4444' : 'inherit' 
+                      }}>
+                        {data.sectorPeersAnalysis.forward.relativeStandingLabel}
+                        {data.sectorPeersAnalysis.forward.relativeStandingScore != null ? ` (${data.sectorPeersAnalysis.forward.relativeStandingScore > 0 ? '+' : ''}${data.sectorPeersAnalysis.forward.relativeStandingScore.toFixed(2)})` : ''}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                Based on top peers: {data.sectorPeersAnalysis.peers.slice(0, 10).join(', ')}{data.sectorPeersAnalysis.peers.length > 10 ? '...' : ''}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Growth & Dividends Strip */}

@@ -64,6 +64,21 @@ export interface FundamentalData {
     institutions: number
     public: number
   }
+  sectorPeersAnalysis?: {
+    peers: string[]
+    trailing: {
+      rawValue: number | null
+      sectorMean: number | null
+      relativeStandingScore: number | null
+      relativeStandingLabel: string
+    }
+    forward: {
+      rawValue: number | null
+      sectorMean: number | null
+      relativeStandingScore: number | null
+      relativeStandingLabel: string
+    }
+  }
 }
 
 export interface FundamentalResult {

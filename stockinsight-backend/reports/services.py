@@ -234,6 +234,7 @@ def _build_structured_prompt(
             "marketCap": fundamental_data.get("marketCap"),
             "fiftyTwoWeekLow": fundamental_data.get("52WeekLow"),
             "fiftyTwoWeekHigh": fundamental_data.get("52WeekHigh"),
+            "sectorPeersAnalysis": fundamental_data.get("sectorPeersAnalysis"),
         },
         "technicalData": {
             "symbol": technical_data.get("symbol"),
@@ -272,7 +273,7 @@ def _build_structured_prompt(
         "{\n"
         '  "overall": "5-7 sentences: include component scores, and explain the result using the fundamental, technical and news sentiment metrics' \
         '",\n'
-        '  "fundamental": "4-6 bullet points (use `- `). Make each bullet unique and specific. Mention the score and explain using the fundamental metrics.",\n'
+        '  "fundamental": "4-6 bullet points (use `- `). Make each bullet unique and specific. Mention the score and explain using the fundamental metrics. Include one bullet point comparing the company\'s valuation (trailing and forward P/E) to its sector peers based on the sectorPeersAnalysis data.",\n'
         '  "technical": "4-6 bullet points (use `- `). Make each bullet unique and specific: include technical score + bias in one bullet, trend context (price vs SMA20/SMA50/SMA200) in one bullet, momentum context (RSI/MACD/ADX) in one bullet, and key levels/structure (support, resistance, breakout, volume spike, fibonacci) plus one risk/watchout. Skip missing metrics instead of repeating available ones",\n'
         '  "sentiment": "Start with 3-5 bullet points (use `- `) highlighting the main insights from the news headlines, then add a `Summary:` paragraph of 4-6 sentences that mentions the score and explains the overall sentiment signal",\n'
         '  "riskFactors": "2-4 sentences",\n'

@@ -3059,9 +3059,15 @@ th {
 
 .fundamentals-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
   margin: 0.5rem 0;
+}
+
+@media (max-width: 800px) {
+  .fundamentals-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .fund-card {

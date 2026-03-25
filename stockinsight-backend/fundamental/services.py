@@ -1,12 +1,87 @@
 """
 Fundamental analysis: fetch company/financial data from yfinance and compute a 0-100 score.
 """
+import os
 import logging
+import math
+import concurrent.futures
 from typing import Any
 
+from dotenv import load_dotenv
+import pandas as pd
+import requests
 import yfinance as yf
 
 logger = logging.getLogger(__name__)
+
+_SP500_CACHE = None
+
+def _get_sector_peers(sector: str, industry: str, exclude_ticker: str, max_peers: int = 15) -> list[str]:
+    load_dotenv()
+    finnhub_key = os.getenv("FINNHUB_API_KEY")
+    if finnhub_key:
+        try:
+            url = f"https://finnhub.io/api/v1/stock/peers?symbol={exclude_ticker.upper()}&token={finnhub_key}"
+            res = requests.get(url, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                if isinstance(data, list) and len(data) > 0:
+                    peers = [p for p in data if isinstance(p, str) and p.upper() != exclude_ticker.upper()]
+                    if peers:
+                        return peers[:max_peers]
+        except Exception as e:
+            logger.warning("Finnhub peers fetch failed: %s", e)
+
+    global _SP500_CACHE
+    if _SP500_CACHE is None:
+        try:
+            url = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
+            _SP500_CACHE = pd.read_csv(url)
+        except Exception as e:
+            logger.warning("Failed to fetch S&P 500 list from CSV: %s", e)
+            return []
+            
+    try:
+        df = _SP500_CACHE
+        peers = []
+        if industry:
+            peers = df[df["GICS Sub-Industry"].str.contains(industry, case=False, na=False)]["Symbol"].tolist()
+        
+        if len(peers) < 3 and sector:
+            search_sector = "Information Technology" if "tech" in sector.lower() else sector
+            peers = df[df["GICS Sector"].str.contains(search_sector, case=False, na=False)]["Symbol"].tolist()
+            
+        peers = [p for p in peers if p.upper() != exclude_ticker.upper()]
+        return peers[:max_peers]
+    except Exception as e:
+        logger.warning("Error filtering peers: %s", e)
+    return []
+
+def _fetch_pe_for_ticker(ticker: str) -> dict:
+    try:
+        t = yf.Ticker(ticker)
+        pe = t.info.get("trailingPE")
+        fpe = t.info.get("forwardPE")
+        return {"ticker": ticker, "trailingPE": float(pe) if pe is not None else None, "forwardPE": float(fpe) if fpe is not None else None}
+    except Exception:
+        return {"ticker": ticker, "trailingPE": None, "forwardPE": None}
+
+def _calculate_relative_standing(raw: float | None, mean: float | None) -> dict:
+    if raw is None or mean is None or mean <= 0:
+        return {"score": 0, "label": "N/A"}
+    
+    diff = (raw - mean) / mean
+    score = math.tanh(diff)  # -1 to 1
+    
+    # For P/E, lower is "Undervalued", higher is "Overvalued"
+    if score < -0.2:
+        label = "Undervalued"
+    elif score > 0.2:
+        label = "Overvalued"
+    else:
+        label = "Fairly Valued"
+        
+    return {"score": round(score, 2), "label": label}
 
 
 def _safe_get(info: dict, *keys: str, default: Any = None) -> Any:
@@ -201,9 +276,35 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
         if not info or "symbol" not in info:
             return None
 
+        sector_str = _safe_get(info, "sector", default="")
+        industry_str = _safe_get(info, "industry", default="")
+        
+        # Calculate PEG fallback
+        pe_val = _safe_get(info, "trailingPE")
+        eps_growth_val = _safe_get(info, "earningsGrowth")
+        peg_fallback = _safe_get(info, "pegRatio")
+        if peg_fallback is None and pe_val is not None and eps_growth_val is not None and eps_growth_val > 0:
+            peg_fallback = pe_val / (eps_growth_val * 100)
+
+        # Calculate ROCE fallback
+        roce_fallback = _safe_get(info, "returnOnCapitalEmployed", default=None)
+        if roce_fallback is None:
+            try:
+                inc = t.income_stmt
+                bs = t.balance_sheet
+                ebit = inc.loc["EBIT"].iloc[0] if "EBIT" in inc.index else None
+                total_assets = bs.loc["Total Assets"].iloc[0] if "Total Assets" in bs.index else None
+                current_liab = bs.loc["Current Liabilities"].iloc[0] if "Current Liabilities" in bs.index else None
+                if ebit is not None and total_assets is not None and current_liab is not None:
+                    capital_employed = total_assets - current_liab
+                    if capital_employed > 0:
+                        roce_fallback = ebit / capital_employed
+            except Exception:
+                pass
+
         data = {
             # Identification
-            "symbol": info.get("symbol"),
+            "symbol": _safe_get(info, "symbol", default=ticker.upper()),
             "shortName": _safe_get(info, "shortName", "longName", default=ticker.upper()),
             "longName": _safe_get(info, "longName", "shortName", default=""),
             "sector": _safe_get(info, "sector"),
@@ -225,7 +326,7 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             # Valuation Metrics
             "trailingPE": _safe_get(info, "trailingPE"),
             "forwardPE": _safe_get(info, "forwardPE"),
-            "pegRatio": _safe_get(info, "pegRatio"),
+            "pegRatio": peg_fallback,
             "priceToBook": _safe_get(info, "priceToBook"),
             "priceToSalesTrailing12Months": _safe_get(info, "priceToSalesTrailing12Months"),
             "enterpriseToEbitda": _safe_get(info, "enterpriseToEbitda"),
@@ -235,7 +336,7 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             "forwardEps": _safe_get(info, "forwardEps"),
             "returnOnEquity": _safe_get(info, "returnOnEquity"),
             "returnOnAssets": _safe_get(info, "returnOnAssets"),
-            "returnOnCapitalEmployed": _safe_get(info, "returnOnCapitalEmployed", default=None),
+            "returnOnCapitalEmployed": roce_fallback,
             "grossMargins": _safe_get(info, "grossMargins"),
             "operatingMargins": _safe_get(info, "operatingMargins"),
             "profitMargins": _safe_get(info, "profitMargins"),
@@ -367,6 +468,43 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
         data["marginsTrend"] = margins_trend[::-1] if margins_trend else []
         data["cashflowTrend"] = cashflow_trend[::-1] if cashflow_trend else []
         data["shareholdingPattern"] = shareholding_pattern
+
+        # Sector P/E Normalization
+        sector_peers = _get_sector_peers(sector_str, industry_str, ticker, max_peers=15)
+        sector_pe_analysis = None
+        if sector_peers:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                peer_results = list(executor.map(_fetch_pe_for_ticker, sector_peers))
+                
+            valid_trailing = [p["trailingPE"] for p in peer_results if p["trailingPE"] is not None and p["trailingPE"] > 0]
+            valid_forward = [p["forwardPE"] for p in peer_results if p["forwardPE"] is not None and p["forwardPE"] > 0]
+            
+            mean_trailing = sum(valid_trailing) / len(valid_trailing) if valid_trailing else None
+            mean_forward = sum(valid_forward) / len(valid_forward) if valid_forward else None
+            
+            ticker_trailing = _safe_get(info, "trailingPE")
+            ticker_forward = _safe_get(info, "forwardPE")
+            
+            trailing_standing = _calculate_relative_standing(ticker_trailing, mean_trailing)
+            forward_standing = _calculate_relative_standing(ticker_forward, mean_forward)
+            
+            sector_pe_analysis = {
+                "peers": sector_peers,
+                "trailing": {
+                    "rawValue": ticker_trailing,
+                    "sectorMean": mean_trailing,
+                    "relativeStandingScore": trailing_standing["score"],
+                    "relativeStandingLabel": trailing_standing["label"],
+                },
+                "forward": {
+                    "rawValue": ticker_forward,
+                    "sectorMean": mean_forward,
+                    "relativeStandingScore": forward_standing["score"],
+                    "relativeStandingLabel": forward_standing["label"],
+                }
+            }
+        
+        data["sectorPeersAnalysis"] = sector_pe_analysis
 
         score = _compute_fundamental_score(info)
         return {
