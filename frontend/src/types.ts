@@ -198,8 +198,3 @@ export interface SearchSuggestion {
   exchange?: string
   type?: string
 }
-
-export interface UsdFxRatesResponse {
-  base: 'USD'
-  rates: Record<string, number>
-}

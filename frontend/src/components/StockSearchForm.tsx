@@ -6,24 +6,20 @@ import type { SearchSuggestion } from '../types'
 
 type StockSearchFormProps = {
   ariaLabel: string
-  buttonLabel?: string
+  buttonLabel: string
   className: string
   initialValue?: string
-  onValueChange?: (value: string) => void
   onSearch: (ticker: string) => void
   placeholder: string
-  showButton?: boolean
 }
 
 export function StockSearchForm({
   ariaLabel,
-  buttonLabel = 'Search',
+  buttonLabel,
   className,
   initialValue = '',
-  onValueChange,
   onSearch,
   placeholder,
-  showButton = true,
 }: StockSearchFormProps) {
   const [query, setQuery] = useState(initialValue)
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([])
@@ -211,14 +207,12 @@ export function StockSearchForm({
   }
 
   return (
-    <form className={`${className}${showButton ? '' : ' is-buttonless'}`} onSubmit={handleSubmit}>
+    <form className={className} onSubmit={handleSubmit}>
       <div className="search-field">
         <input
           value={query}
           onChange={(event) => {
-            const nextValue = event.target.value
-            setQuery(nextValue)
-            onValueChange?.(nextValue)
+            setQuery(event.target.value)
             setSubmitError('')
           }}
           onFocus={() => setIsFocused(true)}
@@ -296,11 +290,9 @@ export function StockSearchForm({
         {submitError && <p className="search-feedback">{submitError}</p>}
       </div>
 
-      {showButton && (
-        <button type="submit" disabled={!query.trim() || isSubmitting}>
-          {buttonLabel}
-        </button>
-      )}
+      <button type="submit" disabled={!query.trim() || isSubmitting}>
+        {buttonLabel}
+      </button>
     </form>
   )
 }

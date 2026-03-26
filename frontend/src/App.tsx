@@ -8,7 +8,6 @@ import {
 } from 'recharts'
 import './App.css'
 import { AuthPanel } from './components/AuthPanel'
-import { ComparisonEngine } from './components/ComparisonEngine'
 import { StockSearchForm } from './components/StockSearchForm'
 import { fetchAnalysis, fetchCurrentUser, loginUser, logoutUser, registerUser } from './api'
 import type {
@@ -42,10 +41,8 @@ type AppRoute =
   | { type: 'home' }
   | { type: 'auth'; mode: AuthMode }
   | { type: 'stock'; ticker: string; tab: AnalysisTab }
-  | { type: 'compare'; tickers: string[] }
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous'
-type FeatureKey = 'analysis' | 'comparison'
 
 const compactFormatter = new Intl.NumberFormat('en-US', {
   notation: 'compact',
@@ -59,15 +56,9 @@ const decimalFormatter = new Intl.NumberFormat('en-US', {
 const currencyFormatterCache = new Map<string, Intl.NumberFormat>()
 
 function App() {
-  const { pathname, search, navigate } = usePathRouter()
-  const route = useMemo(() => parseRoute(pathname, search), [pathname, search])
+  const { pathname, navigate } = usePathRouter()
+  const route = useMemo(() => parseRoute(pathname), [pathname])
   const activeTicker = route.type === 'stock' ? route.ticker : null
-  const activeFeature: FeatureKey | null =
-    route.type === 'compare'
-      ? 'comparison'
-      : route.type === 'stock'
-        ? 'analysis'
-        : null
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
 
@@ -107,34 +98,8 @@ function App() {
     [navigate],
   )
 
-  const handleCompare = useCallback(
-    (rawTickers: string[]) => {
-      const tickers = rawTickers
-        .map((ticker) => normalizeTicker(ticker))
-        .filter(Boolean)
-
-      const uniqueTickers = Array.from(new Set(tickers))
-      if (uniqueTickers.length < 2) {
-        return
-      }
-
-      const params = new URLSearchParams()
-      params.set('tickers', uniqueTickers.join(','))
-      navigate(`/compare?${params.toString()}`)
-    },
-    [navigate],
-  )
-
   const goHome = useCallback(() => {
     navigate('/')
-  }, [navigate])
-
-  const openAnalysisHome = useCallback(() => {
-    navigate('/')
-  }, [navigate])
-
-  const openComparisonHome = useCallback(() => {
-    navigate('/compare')
   }, [navigate])
 
   const openAuthPage = useCallback(
@@ -183,11 +148,8 @@ function App() {
     <div className="app-shell">
       <HeaderBar
         key={`${activeTicker ?? 'home'}-${authStatus}`}
-        activeFeature={activeFeature}
         authStatus={authStatus}
         isAuthenticated={authStatus === 'authenticated'}
-        onOpenAnalysisHome={openAnalysisHome}
-        onOpenComparisonHome={openComparisonHome}
         showSearch={route.type === 'stock'}
         user={authUser}
         initialSearch={activeTicker ?? ''}
@@ -205,13 +167,6 @@ function App() {
             tab={route.tab}
             onTabChange={(tab) => navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`)}
           />
-        ) : route.type === 'compare' ? (
-          <ComparisonEngine
-            key={route.tickers.join('-') || 'empty-comparison'}
-            tickers={route.tickers}
-            onCompare={handleCompare}
-            onOpenAnalysis={handleSearch}
-          />
         ) : route.type === 'auth' ? (
           <AuthPage
             authMode={route.mode}
@@ -220,11 +175,7 @@ function App() {
             onSignup={handleSignup}
           />
         ) : (
-          <HomePage
-            onOpenComparison={openComparisonHome}
-            onSearch={handleSearch}
-            user={authUser}
-          />
+          <HomePage onSearch={handleSearch} user={authUser} />
         )}
       </main>
     </div>
@@ -232,14 +183,11 @@ function App() {
 }
 
 type HeaderBarProps = {
-  activeFeature: FeatureKey | null
   authStatus: AuthStatus
   isAuthenticated: boolean
   initialSearch: string
   onAuthModeChange: (mode: AuthMode) => void
   onLogout: () => void
-  onOpenAnalysisHome: () => void
-  onOpenComparisonHome: () => void
   onSearch: (ticker: string) => void
   onHome: () => void
   showSearch: boolean
@@ -247,14 +195,11 @@ type HeaderBarProps = {
 }
 
 function HeaderBar({
-  activeFeature,
   authStatus,
   isAuthenticated,
   initialSearch,
   onAuthModeChange,
   onLogout,
-  onOpenAnalysisHome,
-  onOpenComparisonHome,
   onSearch,
   onHome,
   showSearch,
@@ -287,87 +232,69 @@ function HeaderBar({
 
   return (
     <header className={`top-bar${isHidden ? ' is-hidden' : ''}`}>
-      <div className="top-bar-inner">
-        <button className="brand" type="button" onClick={onHome}>
-          StockInsight
-        </button>
-        {showSearch ? (
-          <StockSearchForm
-            className="top-search"
-            initialValue={initialSearch}
-            onSearch={onSearch}
-            placeholder="Search company or ticker"
-            ariaLabel="Search company or ticker"
-            buttonLabel="Search"
-          />
+      <button className="brand" type="button" onClick={onHome}>
+        StockInsight
+      </button>
+      {showSearch ? (
+        <StockSearchForm
+          className="top-search"
+          initialValue={initialSearch}
+          onSearch={onSearch}
+          placeholder="Search company or ticker"
+          ariaLabel="Search company or ticker"
+          buttonLabel="Search"
+        />
+      ) : (
+        <div className="top-search-placeholder" aria-hidden="true" />
+      )}
+      <div className="top-actions">
+        {authStatus === 'loading' ? (
+          <span className="session-chip">Restoring session...</span>
+        ) : isAuthenticated ? (
+          <>
+            <span className="session-chip">
+              Signed in as <strong>{user?.username ?? 'user'}</strong>
+            </span>
+            <button type="button" className="secondary" onClick={onLogout}>
+              Log Out
+            </button>
+          </>
         ) : (
-          <div className="feature-nav" aria-label="Feature navigation">
-            <button
-              type="button"
-              className={activeFeature === 'analysis' ? 'active' : ''}
-              onClick={onOpenAnalysisHome}
-            >
-              Stock Analysis
+          <>
+            <button type="button" onClick={() => onAuthModeChange('login')}>
+              Log In
             </button>
             <button
               type="button"
-              className={activeFeature === 'comparison' ? 'active' : ''}
-              onClick={onOpenComparisonHome}
+              className="secondary"
+              onClick={() => onAuthModeChange('signup')}
             >
-              Comparison Engine
+              Create Account
             </button>
-          </div>
+          </>
         )}
-        <div className="top-actions">
-          {authStatus === 'loading' ? (
-            <span className="session-chip">Restoring session...</span>
-          ) : isAuthenticated ? (
-            <>
-              <span className="session-chip">
-                Signed in as <strong>{user?.username ?? 'user'}</strong>
-              </span>
-              <button type="button" className="secondary" onClick={onLogout}>
-                Log Out
-              </button>
-            </>
-          ) : (
-            <>
-              <button type="button" onClick={() => onAuthModeChange('login')}>
-                Log In
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => onAuthModeChange('signup')}
-              >
-                Create Account
-              </button>
-            </>
-          )}
-        </div>
       </div>
     </header>
   )
 }
 
 type HomePageProps = {
-  onOpenComparison: () => void
   onSearch: (ticker: string) => void
   user: AuthUser | null
 }
 
-function HomePage({ onOpenComparison, onSearch, user }: HomePageProps) {
-  const intro = user
-    ? `Welcome back, ${user.username}. Start with a deep single-stock analysis or jump into the comparison engine to evaluate multiple opportunities side by side.`
-    : 'Start with a deep single-stock analysis or jump into the comparison engine to evaluate multiple opportunities side by side.'
-
+function HomePage({ onSearch, user }: HomePageProps) {
   if (user) {
     return (
       <section className="hero">
         <div className="hero-single">
           <p className="kicker">Live equity intelligence workspace</p>
           <h1>StockInsight</h1>
-          <p>{intro}</p>
+          <p>
+            Welcome back, {user.username}. Search any company or ticker to open
+            structured analysis sections for overall, fundamental, technical, and
+            sentiment views.
+          </p>
           <h2>Start With A Company Or Ticker</h2>
           <StockSearchForm
             className="hero-search"
@@ -377,34 +304,6 @@ function HomePage({ onOpenComparison, onSearch, user }: HomePageProps) {
             buttonLabel="Open Analysis"
           />
           <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
-          <div className="cta-row">
-            <button type="button" className="secondary" onClick={onOpenComparison}>
-              Open Comparison Engine
-            </button>
-          </div>
-        </div>
-
-        <div className="home-feature-grid">
-          <article className="feature-card">
-            <p className="kicker">Feature One</p>
-            <h2>Stock Analysis</h2>
-            <p>
-              Open a full research workspace for one ticker with overall,
-              fundamental, technical, sentiment, and full report views.
-            </p>
-          </article>
-
-          <article className="feature-card">
-            <p className="kicker">Feature Two</p>
-            <h2>Comparison Engine</h2>
-            <p>
-              Compare multiple stocks with separate frontend logic while reusing the
-              same backend analysis pipeline for every company in the set.
-            </p>
-            <button type="button" className="secondary" onClick={onOpenComparison}>
-              Compare Multiple Stocks
-            </button>
-          </article>
         </div>
       </section>
     )
@@ -415,7 +314,10 @@ function HomePage({ onOpenComparison, onSearch, user }: HomePageProps) {
       <div className="hero-single">
         <p className="kicker">Live equity intelligence workspace</p>
         <h1>StockInsight</h1>
-        <p>{intro}</p>
+        <p>
+          Search any company or ticker to open structured analysis sections for overall,
+          fundamental, technical, and sentiment views.
+        </p>
         <h2>Start With A Company Or Ticker</h2>
         <StockSearchForm
           className="hero-search"
@@ -425,34 +327,6 @@ function HomePage({ onOpenComparison, onSearch, user }: HomePageProps) {
           buttonLabel="Open Analysis"
         />
         <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
-        <div className="cta-row">
-          <button type="button" className="secondary" onClick={onOpenComparison}>
-            Open Comparison Engine
-          </button>
-        </div>
-      </div>
-
-      <div className="home-feature-grid">
-        <article className="feature-card">
-          <p className="kicker">Feature One</p>
-          <h2>Stock Analysis</h2>
-          <p>
-            Search any company or ticker to open structured overall,
-            fundamental, technical, sentiment, and report sections.
-          </p>
-        </article>
-
-        <article className="feature-card">
-          <p className="kicker">Feature Two</p>
-          <h2>Comparison Engine</h2>
-          <p>
-            Move beyond one-ticker research with a dedicated side-by-side workspace
-            for comparing multiple stocks using the same backend outputs.
-          </p>
-          <button type="button" className="secondary" onClick={onOpenComparison}>
-            Compare Multiple Stocks
-          </button>
-        </article>
       </div>
     </section>
   )
@@ -573,7 +447,7 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
   return (
     <section className="analysis-layout">
       <div className="analysis-header reveal">
-        <div className="analysis-header-copy">
+        <div>
           <p className="kicker">Ticker Detail</p>
           <h1>{companyName ? `${companyName} (${ticker})` : ticker}</h1>
         </div>
@@ -3011,37 +2885,13 @@ function usePathRouter() {
   return { pathname: locationState.pathname, search: locationState.search, navigate }
 }
 
-function parseRoute(pathname: string, search: string): AppRoute {
+function parseRoute(pathname: string): AppRoute {
   if (/^\/login\/?$/i.test(pathname)) {
     return { type: 'auth', mode: 'login' }
   }
 
   if (/^\/signup\/?$/i.test(pathname)) {
     return { type: 'auth', mode: 'signup' }
-  }
-
-  const comparisonMatch = pathname.match(/^\/compare(?:\/([^/]+)\/vs\/([^/]+))?\/?$/i)
-  if (comparisonMatch) {
-    try {
-      const searchParams = new URLSearchParams(search)
-      const queryTickers = (searchParams.get('tickers') ?? '')
-        .split(',')
-        .map((value) => normalizeTicker(decodeURIComponent(value)))
-        .filter(Boolean)
-
-      if (queryTickers.length > 0) {
-        return { type: 'compare', tickers: Array.from(new Set(queryTickers)) }
-      }
-
-      const legacyTickers = [comparisonMatch[1], comparisonMatch[2]]
-        .filter(Boolean)
-        .map((value) => normalizeTicker(decodeURIComponent(value as string)))
-        .filter(Boolean)
-
-      return { type: 'compare', tickers: Array.from(new Set(legacyTickers)) }
-    } catch {
-      return { type: 'compare', tickers: [] }
-    }
   }
 
   const match = pathname.match(/^\/stock\/([^/]+)(?:\/([^/]+))?\/?$/i)

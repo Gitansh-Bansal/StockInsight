@@ -3,7 +3,6 @@ Analysis API: single entry point for the frontend. GET /api/analysis/{ticker}/
 """
 from ninja import Router
 
-from analysis.fx import get_usd_conversion_rates
 from analysis.search import search_companies
 from analysis.services import run_full_analysis
 from technical.services import get_chart_data
@@ -53,20 +52,4 @@ def search_symbols(
     return {
         "query": q.strip(),
         "suggestions": search_companies(q, limit=limit),
-    }
-
-
-@router.get("/fx/usd")
-def get_usd_fx_rates(
-    request,
-    currencies: str = "",
-):
-    normalized_currencies = [
-        str(item).strip().upper()
-        for item in currencies.split(",")
-        if str(item).strip()
-    ]
-    return {
-        "base": "USD",
-        "rates": get_usd_conversion_rates(normalized_currencies),
     }

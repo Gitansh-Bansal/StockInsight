@@ -1,10 +1,4 @@
-import type {
-  AnalysisResponse,
-  AuthUser,
-  OhlcvPoint,
-  SearchSuggestion,
-  UsdFxRatesResponse,
-} from './types'
+import type { AnalysisResponse, AuthUser, OhlcvPoint, SearchSuggestion } from './types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
   /\/$/,
@@ -12,8 +6,6 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.re
 )
 
 const inFlightAnalysisRequests = new Map<string, Promise<AnalysisResponse>>()
-const analysisResponseCache = new Map<string, AnalysisResponse>()
-const usdFxRateCache = new Map<string, number>()
 const inFlightSearchRequests = new Map<string, Promise<SearchSuggestion[]>>()
 const searchSuggestionCache = new Map<string, SearchSuggestion[]>()
 let csrfTokenCache = ''
@@ -138,11 +130,6 @@ export async function fetchAnalysis(
 ): Promise<AnalysisResponse> {
   const cleanTicker = ticker.trim().toUpperCase()
   const requestKey = cleanTicker
-  const cachedResponse = analysisResponseCache.get(requestKey)
-  if (cachedResponse) {
-    return cachedResponse
-  }
-
   const existingRequest = inFlightAnalysisRequests.get(requestKey)
   if (existingRequest) {
     return existingRequest
@@ -156,59 +143,10 @@ export async function fetchAnalysis(
 
   inFlightAnalysisRequests.set(requestKey, requestPromise)
   try {
-    const response = await requestPromise
-    analysisResponseCache.set(requestKey, response)
-    return response
+    return await requestPromise
   } finally {
     inFlightAnalysisRequests.delete(requestKey)
   }
-}
-
-export async function fetchMultipleAnalyses(
-  tickers: string[],
-): Promise<AnalysisResponse[]> {
-  const cleanTickers = tickers
-    .map((ticker) => ticker.trim().toUpperCase())
-    .filter(Boolean)
-
-  return Promise.all(cleanTickers.map((ticker) => fetchAnalysis(ticker)))
-}
-
-export async function fetchUsdFxRates(
-  currencies: string[],
-): Promise<Record<string, number>> {
-  const normalizedCurrencies = Array.from(
-    new Set(
-      currencies
-        .map((currency) => currency.trim().toUpperCase())
-        .filter(Boolean),
-    ),
-  )
-
-  const missingCurrencies = normalizedCurrencies.filter(
-    (currency) => !usdFxRateCache.has(currency),
-  )
-
-  if (missingCurrencies.length > 0) {
-    const payload = await apiRequest<UsdFxRatesResponse>(
-      `/api/fx/usd?currencies=${encodeURIComponent(missingCurrencies.join(','))}`,
-    )
-
-    Object.entries(payload.rates ?? {}).forEach(([currency, rate]) => {
-      if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
-        usdFxRateCache.set(currency.trim().toUpperCase(), rate)
-      }
-    })
-  }
-
-  const rates: Record<string, number> = {}
-  normalizedCurrencies.forEach((currency) => {
-    const cachedRate = usdFxRateCache.get(currency)
-    if (cachedRate) {
-      rates[currency] = cachedRate
-    }
-  })
-  return rates
 }
 
 export async function fetchChartData(
