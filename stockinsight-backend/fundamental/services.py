@@ -113,7 +113,7 @@ def _normalize_percentage(val: Any, is_yield: bool = False) -> float | None:
         return None
 
 
-def _compute_fundamental_score(info: dict) -> float:
+def _compute_fundamental_score(info: dict, sector_pe_data: dict | None = None) -> float:
     """
     Compute a 0-100 fundamental score from key metrics, 
     with scope-safe extraction and strict sector-based health logic.
@@ -182,7 +182,21 @@ def _compute_fundamental_score(info: dict) -> float:
         if peg < 1.0: score += 10
         elif peg <= 1.5: score += 5
     
-    if pe is not None and pe > 0:
+    # P/E scoring: prefer sector-normalised relative standing over raw thresholds
+    if sector_pe_data is not None:
+        trailing_standing_score = sector_pe_data.get("trailing", {}).get("relativeStandingScore")
+        forward_standing_score = sector_pe_data.get("forward", {}).get("relativeStandingScore")
+        # Use trailing if available, else forward. Score is tanh in [-1, 1]:
+        #   <= -0.2 → Undervalued → +10, in (-0.2, 0.2) → Fairly Valued → +5, > 0.2 → Overvalued → +0
+        norm_score = trailing_standing_score if trailing_standing_score is not None else forward_standing_score
+        if norm_score is not None:
+            if norm_score <= -0.2:
+                score += 10
+            elif norm_score <= 0.2:
+                score += 5
+            # else: overvalued → no points
+    elif pe is not None and pe > 0:
+        # Fallback: raw thresholds when no sector data
         if pe < 15: score += 10
         elif pe <= 25: score += 5
 
@@ -255,8 +269,17 @@ def _compute_fundamental_score(info: dict) -> float:
     valuation_score = 0
     if peg is not None and peg < 1.0: valuation_score += 10
     elif peg is not None and peg <= 1.5: valuation_score += 5
-    if pe is not None and pe < 15: valuation_score += 10
-    elif pe is not None and pe <= 25: valuation_score += 5
+    # Mirror the sector-normalised P/E logic used in scoring above
+    if sector_pe_data is not None:
+        trailing_standing_score = sector_pe_data.get("trailing", {}).get("relativeStandingScore")
+        forward_standing_score = sector_pe_data.get("forward", {}).get("relativeStandingScore")
+        norm_score = trailing_standing_score if trailing_standing_score is not None else forward_standing_score
+        if norm_score is not None:
+            if norm_score <= -0.2: valuation_score += 10
+            elif norm_score <= 0.2: valuation_score += 5
+    elif pe is not None:
+        if pe < 15: valuation_score += 10
+        elif pe <= 25: valuation_score += 5
     if pb_ratio is not None and pb_ratio < 1.5: valuation_score += 10 
     elif pb_ratio is not None and pb_ratio <= 3.0: valuation_score += 5
 
@@ -469,25 +492,25 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
         data["cashflowTrend"] = cashflow_trend[::-1] if cashflow_trend else []
         data["shareholdingPattern"] = shareholding_pattern
 
-        # Sector P/E Normalization
+        # Sector P/E Normalization — computed BEFORE scoring so normalised values feed into the score
         sector_peers = _get_sector_peers(sector_str, industry_str, ticker, max_peers=15)
         sector_pe_analysis = None
         if sector_peers:
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 peer_results = list(executor.map(_fetch_pe_for_ticker, sector_peers))
-                
+
             valid_trailing = [p["trailingPE"] for p in peer_results if p["trailingPE"] is not None and p["trailingPE"] > 0]
             valid_forward = [p["forwardPE"] for p in peer_results if p["forwardPE"] is not None and p["forwardPE"] > 0]
-            
+
             mean_trailing = sum(valid_trailing) / len(valid_trailing) if valid_trailing else None
             mean_forward = sum(valid_forward) / len(valid_forward) if valid_forward else None
-            
+
             ticker_trailing = _safe_get(info, "trailingPE")
             ticker_forward = _safe_get(info, "forwardPE")
-            
+
             trailing_standing = _calculate_relative_standing(ticker_trailing, mean_trailing)
             forward_standing = _calculate_relative_standing(ticker_forward, mean_forward)
-            
+
             sector_pe_analysis = {
                 "peers": sector_peers,
                 "trailing": {
@@ -503,10 +526,11 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
                     "relativeStandingLabel": forward_standing["label"],
                 }
             }
-        
+
         data["sectorPeersAnalysis"] = sector_pe_analysis
 
-        score = _compute_fundamental_score(info)
+        # Pass sector P/E analysis into scorer so it uses normalised standing
+        score = _compute_fundamental_score(info, sector_pe_data=sector_pe_analysis)
         return {
             "data": data,
             "score": score,

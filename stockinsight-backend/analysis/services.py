@@ -4,6 +4,7 @@ and verdict; generate comprehensive report. Single entry point for "analyze tick
 """
 import logging
 import time
+import concurrent.futures
 from datetime import datetime, UTC
 from typing import Any
 
@@ -88,62 +89,33 @@ def run_full_analysis(
         analysis_started_at.isoformat(),
     )
 
-    fundamental_started_at = datetime.now(UTC)
-    fundamental_started_perf = time.perf_counter()
+    # -----------------------------------------------------------------
+    # Run fundamental, technical and sentiment concurrently
+    # -----------------------------------------------------------------
     _timing_log(
         timing_logs_enabled,
-        "PROCESS_START fundamental ticker=%s started_at=%s",
-        ticker,
-        fundamental_started_at.isoformat(),
-    )
-    fundamental_result = get_fundamental_analysis(ticker)
-    _timing_log(
-        timing_logs_enabled,
-        "PROCESS_END fundamental ticker=%s ended_at=%s duration_s=%.3f",
+        "PROCESS_START concurrent_analysis ticker=%s started_at=%s",
         ticker,
         datetime.now(UTC).isoformat(),
-        time.perf_counter() - fundamental_started_perf,
     )
+    concurrent_started_perf = time.perf_counter()
 
-    technical_started_at = datetime.now(UTC)
-    technical_started_perf = time.perf_counter()
-    _timing_log(
-        timing_logs_enabled,
-        "PROCESS_START technical ticker=%s started_at=%s",
-        ticker,
-        technical_started_at.isoformat(),
-    )
-    technical_result = get_technical_analysis(ticker)
-    _timing_log(
-        timing_logs_enabled,
-        "PROCESS_END technical ticker=%s ended_at=%s duration_s=%.3f",
-        ticker,
-        datetime.now(UTC).isoformat(),
-        time.perf_counter() - technical_started_perf,
-    )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_fundamental = executor.submit(get_fundamental_analysis, ticker)
+        future_technical = executor.submit(get_technical_analysis, ticker)
+        # Sentiment runs in parallel; company_name defaults to None (handled internally)
+        future_sentiment = executor.submit(get_sentiment_analysis, ticker, None)
 
-    sentiment_started_at = datetime.now(UTC)
-    sentiment_started_perf = time.perf_counter()
-    company_name = None
-    if fundamental_result:
-        fundamental_data = fundamental_result.get("data") or {}
-        company_name = (
-            fundamental_data.get("shortName")
-            or fundamental_data.get("longName")
-        )
+        fundamental_result = future_fundamental.result()
+        technical_result = future_technical.result()
+        sentiment_result = future_sentiment.result()
+
     _timing_log(
         timing_logs_enabled,
-        "PROCESS_START sentiment ticker=%s started_at=%s",
-        ticker,
-        sentiment_started_at.isoformat(),
-    )
-    sentiment_result = get_sentiment_analysis(ticker, stock_name=company_name)
-    _timing_log(
-        timing_logs_enabled,
-        "PROCESS_END sentiment ticker=%s ended_at=%s duration_s=%.3f",
+        "PROCESS_END concurrent_analysis ticker=%s ended_at=%s duration_s=%.3f",
         ticker,
         datetime.now(UTC).isoformat(),
-        time.perf_counter() - sentiment_started_perf,
+        time.perf_counter() - concurrent_started_perf,
     )
 
     # If we have no data at all, treat as invalid ticker
