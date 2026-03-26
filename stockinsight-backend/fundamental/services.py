@@ -16,87 +16,55 @@ logger = logging.getLogger(__name__)
 
 _SP500_CACHE = None
 
-def _get_sector_peers(exclude_ticker: str, target_industry: str, target_sector: str, max_peers: int = 15) -> list[str]:
-    """
-    Fetch and filter peers by exact industry match.
-    """
+def _get_sector_peers(sector: str, industry: str, exclude_ticker: str, max_peers: int = 15) -> list[str]:
     load_dotenv()
     finnhub_key = os.getenv("FINNHUB_API_KEY")
-    candidates = set()
-
-    # 1. Gather all potential ticker symbols from multiple pools
     if finnhub_key:
         try:
             url = f"https://finnhub.io/api/v1/stock/peers?symbol={exclude_ticker.upper()}&token={finnhub_key}"
             res = requests.get(url, timeout=5)
             if res.status_code == 200:
                 data = res.json()
-                if isinstance(data, list):
-                    for p in data:
-                        if isinstance(p, str): candidates.add(p.upper())
+                if isinstance(data, list) and len(data) > 0:
+                    peers = [p for p in data if isinstance(p, str) and p.upper() != exclude_ticker.upper()]
+                    if peers:
+                        return peers[:max_peers]
         except Exception as e:
             logger.warning("Finnhub peers fetch failed: %s", e)
 
-    # 2. Add symbols from the Universe (S&P 500) if matching industry/sector
     global _SP500_CACHE
     if _SP500_CACHE is None:
         try:
             url = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
             _SP500_CACHE = pd.read_csv(url)
         except Exception as e:
-            logger.warning("Failed to fetch S&P 500 list: %s", e)
-    
-    if _SP500_CACHE is not None:
-        # Match by GICS Sub-Industry (Industry match)
-        if target_industry:
-            mask = _SP500_CACHE["GICS Sub-Industry"].str.contains(target_industry, case=False, na=False)
-            industry_symbols = _SP500_CACHE[mask]["Symbol"].tolist()
-            for s in industry_symbols: candidates.add(s.upper())
+            logger.warning("Failed to fetch S&P 500 list from CSV: %s", e)
+            return []
+            
+    try:
+        df = _SP500_CACHE
+        peers = []
+        if industry:
+            peers = df[df["GICS Sub-Industry"].str.contains(industry, case=False, na=False)]["Symbol"].tolist()
         
-        # Match by GICS Sector (Broad Sector match)
-        if target_sector:
-            # Handle common sector name variations
-            search_sector = "Information Technology" if "tech" in target_sector.lower() else target_sector
-            mask = _SP500_CACHE["GICS Sector"].str.contains(search_sector, case=False, na=False)
-            sector_symbols = _SP500_CACHE[mask]["Symbol"].tolist()
-            for s in sector_symbols: candidates.add(s.upper())
+        if len(peers) < 3 and sector:
+            search_sector = "Information Technology" if "tech" in sector.lower() else sector
+            peers = df[df["GICS Sector"].str.contains(search_sector, case=False, na=False)]["Symbol"].tolist()
+            
+        peers = [p for p in peers if p.upper() != exclude_ticker.upper()]
+        return peers[:max_peers]
+    except Exception as e:
+        logger.warning("Error filtering peers: %s", e)
+    return []
 
-    # Final candidate pool (minus current stock)
-    candidates.discard(exclude_ticker.upper())
-    if not candidates:
-        return []
-
-    # 3. Filter candidates by EXACT yfinance industry string
-    # We fetch P/E and Industry in one go to be efficient
-    candidate_list = list(candidates)[:100] # Check more candidates for better industry coverage
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        peer_data = list(executor.map(_fetch_pe_and_industry, candidate_list))
-    
-    # Filter for exact industry match
-    if target_industry:
-        exact_peers = [p for p in peer_data if p["industry"] == target_industry]
-        if len(exact_peers) >= 1: # Even 1-2 peers is better than broad sector
-            return exact_peers[:max_peers] # Returns list of dicts with P/E and Ticker
-        
-    # Fallback: if exact industry is 0, return the best candidates we found
-    # Sort these to favor candidates with P/E data
-    return [p for p in peer_data if p["trailingPE"] or p["forwardPE"]][:max_peers]
-
-def _fetch_pe_and_industry(ticker: str) -> dict:
+def _fetch_pe_for_ticker(ticker: str) -> dict:
     try:
         t = yf.Ticker(ticker)
-        info = t.info
-        pe = info.get("trailingPE")
-        fpe = info.get("forwardPE")
-        ind = info.get("industry")
-        return {
-            "ticker": ticker, 
-            "trailingPE": float(pe) if pe is not None else None, 
-            "forwardPE": float(fpe) if fpe is not None else None,
-            "industry": ind
-        }
+        pe = t.info.get("trailingPE")
+        fpe = t.info.get("forwardPE")
+        return {"ticker": ticker, "trailingPE": float(pe) if pe is not None else None, "forwardPE": float(fpe) if fpe is not None else None}
     except Exception:
-        return {"ticker": ticker, "trailingPE": None, "forwardPE": None, "industry": None}
+        return {"ticker": ticker, "trailingPE": None, "forwardPE": None}
 
 def _calculate_relative_standing(raw: float | None, mean: float | None) -> dict:
     if raw is None or mean is None or mean <= 0:
@@ -145,11 +113,10 @@ def _normalize_percentage(val: Any, is_yield: bool = False) -> float | None:
         return None
 
 
-def _compute_fundamental_score(info: dict, sector_pe_analysis: dict | None = None) -> float:
+def _compute_fundamental_score(info: dict) -> float:
     """
     Compute a 0-100 fundamental score from key metrics, 
     with scope-safe extraction and strict sector-based health logic.
-    Integrates sector-normalized P/E if available.
     """
     score = 0.0
 
@@ -215,25 +182,13 @@ def _compute_fundamental_score(info: dict, sector_pe_analysis: dict | None = Non
         if peg < 1.0: score += 10
         elif peg <= 1.5: score += 5
     
+    if pe is not None and pe > 0:
+        if pe < 15: score += 10
+        elif pe <= 25: score += 5
+
     if pb_ratio is not None and pb_ratio > 0:
         if pb_ratio < 1.5: score += 10
         elif pb_ratio <= 3.0: score += 5
-    
-    # Pillar 1.b: Normalized P/E (Industry Focus)
-    if sector_pe_analysis and 'trailing' in sector_pe_analysis and 'forward' in sector_pe_analysis:
-        t_score = sector_pe_analysis['trailing'].get('relativeStandingScore', 0)
-        f_score = sector_pe_analysis['forward'].get('relativeStandingScore', 0)
-        avg_rel = (t_score + f_score) / 2
-        
-        if avg_rel < -0.4: score += 15 # High Bonus for Deep Value
-        elif avg_rel < -0.1: score += 10 # Good Value
-        elif avg_rel < 0.1: score += 5 # Fairly Valued
-        elif avg_rel > 0.4: score -= 10 # High Penalty for Overvalued
-        elif avg_rel > 0.1: score -= 5 # Penalty for Overvalued
-    elif pe is not None and pe > 0:
-        # Fallback to absolute PE if peer data is missing
-        if pe < 15: score += 10
-        elif pe <= 25: score += 5
 
     # --- Pillar 2: Profitability & Efficiency (Max 30) ---
     if roe is not None:
@@ -514,11 +469,13 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
         data["cashflowTrend"] = cashflow_trend[::-1] if cashflow_trend else []
         data["shareholdingPattern"] = shareholding_pattern
 
-        # Sector P/E Normalization - Industry Focused
-        peer_results = _get_sector_peers(ticker, industry_str, sector_str, max_peers=15)
+        # Sector P/E Normalization
+        sector_peers = _get_sector_peers(sector_str, industry_str, ticker, max_peers=15)
         sector_pe_analysis = None
-        if peer_results:
-            # peer_results is now a list of dicts containing P/E and Ticker
+        if sector_peers:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                peer_results = list(executor.map(_fetch_pe_for_ticker, sector_peers))
+                
             valid_trailing = [p["trailingPE"] for p in peer_results if p["trailingPE"] is not None and p["trailingPE"] > 0]
             valid_forward = [p["forwardPE"] for p in peer_results if p["forwardPE"] is not None and p["forwardPE"] > 0]
             
@@ -532,7 +489,7 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             forward_standing = _calculate_relative_standing(ticker_forward, mean_forward)
             
             sector_pe_analysis = {
-                "peers": [p["ticker"] for p in peer_results],
+                "peers": sector_peers,
                 "trailing": {
                     "rawValue": ticker_trailing,
                     "sectorMean": mean_trailing,
@@ -549,7 +506,7 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
         
         data["sectorPeersAnalysis"] = sector_pe_analysis
 
-        score = _compute_fundamental_score(info, sector_pe_analysis)
+        score = _compute_fundamental_score(info)
         return {
             "data": data,
             "score": score,
