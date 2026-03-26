@@ -229,6 +229,36 @@ export function ComparisonEngine({
             formatPercent,
           ),
           buildNumericRow(
+            'Relative standing (Trailing P/E)',
+            companies.map(
+              (company) => company.analysis.fundamental?.data?.sectorPeersAnalysis?.trailing?.relativeStandingScore,
+            ),
+            (val) =>
+              formatRelativeStanding(
+                val,
+                companies.find(
+                  (c) =>
+                    c.analysis.fundamental?.data?.sectorPeersAnalysis?.trailing?.relativeStandingScore === val,
+                )?.analysis.fundamental?.data?.sectorPeersAnalysis?.trailing?.relativeStandingLabel,
+              ),
+            'lower',
+          ),
+          buildNumericRow(
+            'Relative standing (Forward P/E)',
+            companies.map(
+              (company) => company.analysis.fundamental?.data?.sectorPeersAnalysis?.forward?.relativeStandingScore,
+            ),
+            (val) =>
+              formatRelativeStanding(
+                val,
+                companies.find(
+                  (c) =>
+                    c.analysis.fundamental?.data?.sectorPeersAnalysis?.forward?.relativeStandingScore === val,
+                )?.analysis.fundamental?.data?.sectorPeersAnalysis?.forward?.relativeStandingLabel,
+              ),
+            'lower',
+          ),
+          buildNumericRow(
             'Return on equity',
             companies.map((company) => company.analysis.fundamental?.data?.returnOnEquity),
             formatPercent,
@@ -640,6 +670,13 @@ function formatInteger(value: number | null | undefined): string {
     return 'N/A'
   }
   return Math.round(value).toString()
+}
+
+function formatRelativeStanding(value: number | null | undefined, label: string | null | undefined): string {
+  if (!isFiniteNumber(value)) {
+    return 'N/A'
+  }
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)} (${label || 'N/A'})`
 }
 
 function formatPercent(value: number | null | undefined): string {
