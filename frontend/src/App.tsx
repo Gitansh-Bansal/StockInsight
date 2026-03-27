@@ -372,15 +372,38 @@ function ComparePage() {
       return []
     }
   })
-  const [results, setResults] = useState<ComparisonResponse | null>(null)
+  const [results, setResults] = useState<ComparisonResponse | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('compareResults')
+      return saved ? (JSON.parse(saved) as ComparisonResponse) : null
+    } catch {
+      return null
+    }
+  })
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => sessionStorage.getItem('compareError') ?? '')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     sessionStorage.setItem('compareTickers', JSON.stringify(tickers))
   }, [tickers])
+
+  useEffect(() => {
+    if (results) {
+      sessionStorage.setItem('compareResults', JSON.stringify(results))
+      return
+    }
+    sessionStorage.removeItem('compareResults')
+  }, [results])
+
+  useEffect(() => {
+    if (error) {
+      sessionStorage.setItem('compareError', error)
+      return
+    }
+    sessionStorage.removeItem('compareError')
+  }, [error])
 
   const addTicker = useCallback((raw: string) => {
     const ticker = raw.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, '')

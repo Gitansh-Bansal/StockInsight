@@ -5,6 +5,7 @@ deterministic fallback.
 import json
 import logging
 import os
+import re
 from typing import Any
 
 from dotenv import load_dotenv
@@ -74,16 +75,37 @@ def generate_report_bundle(
     )
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_budget=0)
-            ),
-        )
-        raw_text = (getattr(response, "text", "") or "").strip()
-        parsed = _parse_json_object(raw_text)
+        parsed: dict[str, Any] | None = None
+        last_raw_text = ""
+        for attempt in range(1, 3):
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=(
+                    prompt
+                    if attempt == 1
+                    else _build_json_retry_prompt(prompt)
+                ),
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    response_mime_type="application/json",
+                ),
+            )
+            raw_text = (getattr(response, "text", "") or "").strip()
+            last_raw_text = raw_text
+            parsed = _parse_json_object(raw_text)
+            if parsed is not None:
+                break
+            logger.warning(
+                "Gemini response was not valid JSON on attempt %d/2.",
+                attempt,
+            )
+
         if parsed is None:
+            if last_raw_text:
+                logger.warning(
+                    "Gemini response parse failed after retry. Preview: %s",
+                    last_raw_text[:400].replace("\n", "\\n"),
+                )
             logger.warning("Gemini response was not valid JSON. Falling back.")
             return _placeholder_report_bundle(
                 ticker=ticker,
@@ -184,7 +206,7 @@ def _build_structured_prompt(
     fundamental_data = (fundamental_result or {}).get("data") or {}
     technical_data = _extract_technical_prompt_data(technical_result)
     sentiment_data = (sentiment_result or {}).get("data") or {}
-    headlines = (sentiment_result or {}).get("headlines") or {}
+    headlines = _compact_sentiment_headlines((sentiment_result or {}).get("headlines"))
 
     payload = {
         "ticker": ticker.upper(),
@@ -295,6 +317,39 @@ def _build_structured_prompt(
     )
 
 
+def _build_json_retry_prompt(base_prompt: str) -> str:
+    return (
+        f"{base_prompt}\n\n"
+        "CRITICAL OUTPUT REQUIREMENT:\n"
+        "Return only one valid JSON object.\n"
+        "Do not include markdown, comments, or code fences.\n"
+    )
+
+
+def _compact_sentiment_headlines(raw_headlines: Any) -> list[dict[str, Any]]:
+    """
+    Keep prompt size bounded and stable; oversized noisy payloads increase
+    malformed/truncated JSON responses from the model.
+    """
+    if not isinstance(raw_headlines, list):
+        return []
+
+    compact: list[dict[str, Any]] = []
+    for headline in raw_headlines:
+        if not isinstance(headline, dict):
+            continue
+        compact.append(
+            {
+                "title": headline.get("title"),
+                "source": headline.get("source"),
+                "publishedAt": headline.get("publishedAt"),
+                "sentiment": headline.get("sentiment"),
+                "sentimentScore": headline.get("sentimentScore"),
+            }
+        )
+    return compact
+
+
 def _parse_json_object(raw_text: str) -> dict[str, Any] | None:
     if not raw_text:
         return None
@@ -307,19 +362,26 @@ def _parse_json_object(raw_text: str) -> dict[str, Any] | None:
     except Exception:
         pass
 
-    # Fallback: extract first JSON object block from markdown/text
-    start = raw_text.find("{")
-    end = raw_text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
+    # Fallback: parse fenced JSON blocks if present.
+    for block in re.findall(r"```(?:json)?\s*([\s\S]*?)```", raw_text, flags=re.IGNORECASE):
+        try:
+            obj = json.loads(block.strip())
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            continue
 
-    candidate = raw_text[start : end + 1]
-    try:
-        obj = json.loads(candidate)
-        if isinstance(obj, dict):
-            return obj
-    except Exception:
-        return None
+    # Robust scan: decode first valid JSON object anywhere in the text.
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", raw_text):
+        start = match.start()
+        try:
+            obj, _ = decoder.raw_decode(raw_text[start:])
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            continue
+
     return None
 
 
