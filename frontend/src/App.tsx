@@ -172,7 +172,11 @@ function App() {
             key={route.ticker}
             ticker={route.ticker}
             tab={route.tab}
-            onTabChange={(tab) => navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`)}
+            onTabChange={(tab) =>
+              navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`, {
+                replace: true,
+              })
+            }
           />
         ) : route.type === 'compare' ? (
           <ComparePage />
@@ -368,14 +372,7 @@ function ComparePage() {
       return []
     }
   })
-  const [results, setResults] = useState<ComparisonResponse | null>(() => {
-    try {
-      const saved = sessionStorage.getItem('compareResults')
-      return saved ? JSON.parse(saved) : null
-    } catch {
-      return null
-    }
-  })
+  const [results, setResults] = useState<ComparisonResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
@@ -384,14 +381,6 @@ function ComparePage() {
   useEffect(() => {
     sessionStorage.setItem('compareTickers', JSON.stringify(tickers))
   }, [tickers])
-
-  useEffect(() => {
-    if (results) {
-      sessionStorage.setItem('compareResults', JSON.stringify(results))
-    } else {
-      sessionStorage.removeItem('compareResults')
-    }
-  }, [results])
 
   const addTicker = useCallback((raw: string) => {
     const ticker = raw.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, '')
@@ -420,7 +409,7 @@ function ComparePage() {
     }, 1000)
 
     try {
-      const response = await fetchComparisonAnalysis(tickers, results)
+      const response = await fetchComparisonAnalysis(tickers)
       setResults(response)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Comparison failed.')
@@ -431,7 +420,7 @@ function ComparePage() {
         timerRef.current = null
       }
     }
-  }, [tickers, results])
+  }, [tickers])
 
   useEffect(() => {
     return () => {
@@ -3249,12 +3238,19 @@ function usePathRouter() {
     }
   }, [])
 
-  const navigate = useCallback((path: string) => {
+  const navigate = useCallback((
+    path: string,
+    options?: { replace?: boolean },
+  ) => {
     const target = new URL(path, window.location.origin)
     const current = `${window.location.pathname}${window.location.search}`
     const next = `${target.pathname}${target.search}`
     if (next !== current) {
-      window.history.pushState({}, '', next)
+      if (options?.replace) {
+        window.history.replaceState({}, '', next)
+      } else {
+        window.history.pushState({}, '', next)
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
     setLocationState({

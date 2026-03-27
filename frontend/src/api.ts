@@ -8,11 +8,35 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.re
 const inFlightAnalysisRequests = new Map<string, Promise<AnalysisResponse>>()
 const inFlightSearchRequests = new Map<string, Promise<SearchSuggestion[]>>()
 const searchSuggestionCache = new Map<string, SearchSuggestion[]>()
-const analysisCache = new Map<string, AnalysisResponse>()
+type AnalysisCacheEntry = {
+  data: AnalysisResponse
+  cachedAt: number
+}
+
+// Change this value to adjust how long analysis responses stay cached.
+const ANALYSIS_CACHE_TTL_MS = 60_000
+const analysisCache = new Map<string, AnalysisCacheEntry>()
 let csrfTokenCache = ''
 
 export function setAnalysisCache(ticker: string, data: AnalysisResponse) {
-  analysisCache.set(ticker.trim().toUpperCase(), data)
+  analysisCache.set(ticker.trim().toUpperCase(), {
+    data,
+    cachedAt: Date.now(),
+  })
+}
+
+function getCachedAnalysisIfFresh(ticker: string): AnalysisResponse | null {
+  const cacheEntry = analysisCache.get(ticker)
+  if (!cacheEntry) {
+    return null
+  }
+
+  if (Date.now() - cacheEntry.cachedAt > ANALYSIS_CACHE_TTL_MS) {
+    analysisCache.delete(ticker)
+    return null
+  }
+
+  return cacheEntry.data
 }
 
 function apiUrl(path: string): string {
@@ -134,8 +158,8 @@ export async function fetchAnalysis(
   ticker: string,
 ): Promise<AnalysisResponse> {
   const cleanTicker = ticker.trim().toUpperCase()
-  
-  const cached = analysisCache.get(cleanTicker)
+
+  const cached = getCachedAnalysisIfFresh(cleanTicker)
   if (cached) {
     return cached
   }
@@ -155,7 +179,7 @@ export async function fetchAnalysis(
   inFlightAnalysisRequests.set(requestKey, requestPromise)
   try {
     const result = await requestPromise
-    analysisCache.set(cleanTicker, result)
+    setAnalysisCache(cleanTicker, result)
     return result
   } finally {
     inFlightAnalysisRequests.delete(requestKey)
@@ -248,7 +272,6 @@ export async function fetchSearchSuggestions(
 
 export async function fetchComparisonAnalysis(
   tickers: string[],
-  previousResults?: ComparisonResponse | null,
 ): Promise<ComparisonResponse> {
   const cleanTickers = Array.from(new Set(tickers
     .map((t) => t.trim().toUpperCase())
@@ -258,14 +281,7 @@ export async function fetchComparisonAnalysis(
   const toFetch: string[] = []
 
   for (const ticker of cleanTickers) {
-    const previousEntry = previousResults?.results?.[ticker]
-    if (previousEntry && typeof previousEntry === 'object' && !('error' in previousEntry)) {
-      mergedResults[ticker] = previousEntry
-      setAnalysisCache(ticker, previousEntry as AnalysisResponse)
-      continue
-    }
-
-    const cachedEntry = analysisCache.get(ticker)
+    const cachedEntry = getCachedAnalysisIfFresh(ticker)
     if (cachedEntry) {
       mergedResults[ticker] = cachedEntry
       continue
