@@ -5,6 +5,7 @@ Uses Finnhub as primary source, with NewsData.io, NewsAPI, and NewsAPI.ai as fal
 import logging
 import os
 import re
+import threading
 import unicodedata
 from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
@@ -25,23 +26,34 @@ NEWSAPIAI_REALTIME_LOOKBACK_DAYS = 2
 
 # Lazy load FinBERT to avoid heavy import at Django startup
 _finbert_pipeline = None
+_finbert_lock = threading.Lock()
 
 
 def _get_finbert():
     global _finbert_pipeline
-    if _finbert_pipeline is None:
-        try:
-            from transformers import pipeline
+    if _finbert_pipeline is not None:
+        return _finbert_pipeline
 
-            _finbert_pipeline = pipeline(
-                "sentiment-analysis",
-                model="ProsusAI/finbert",
-                truncation=True,
-                max_length=512,
-            )
-        except Exception as e:
-            logger.warning("FinBERT not available: %s. Using fallback neutral score.", e)
+    # Ensure only one thread performs the first model load.
+    with _finbert_lock:
+        if _finbert_pipeline is None:
+            try:
+                from transformers import pipeline
+
+                _finbert_pipeline = pipeline(
+                    "sentiment-analysis",
+                    model="ProsusAI/finbert",
+                    truncation=True,
+                    max_length=512,
+                )
+            except Exception as e:
+                logger.warning("FinBERT not available: %s. Using fallback neutral score.", e)
     return _finbert_pipeline
+
+
+def preload_finbert_model() -> bool:
+    """Warm FinBERT weights once for this Django process."""
+    return _get_finbert() is not None
 
 
 def _env_bool(name: str, default: bool = False) -> bool:

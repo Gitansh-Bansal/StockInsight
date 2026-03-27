@@ -44,7 +44,7 @@ def generate_report_endpoint(request, payload: ReportRequest):
 @router.post("/analysis/compare")
 def compare_stocks(request, payload: CompareRequest):
     """
-    Run full analysis for multiple tickers in parallel (separate OS processes).
+    Run full analysis for multiple tickers concurrently.
     Reports are skipped for speed; use the single-ticker endpoint for full reports.
     """
     tickers = payload.tickers[:10]  # cap at 10

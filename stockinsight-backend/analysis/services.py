@@ -12,22 +12,10 @@ from django.conf import settings
 
 from fundamental.services import get_fundamental_analysis
 from technical.services import get_technical_analysis
-from sentiment.services import get_sentiment_analysis
+from sentiment.services import get_sentiment_analysis, preload_finbert_model
 from reports.services import generate_report_bundle
 
-import atexit
-
 logger = logging.getLogger(__name__)
-
-_comparison_executor = None
-
-def get_comparison_executor():
-    global _comparison_executor
-    if _comparison_executor is None:
-        # Keep up to 6 worker processes alive globally to preserve loaded FinBERT weights
-        _comparison_executor = concurrent.futures.ProcessPoolExecutor(max_workers=6)
-        atexit.register(lambda: _comparison_executor.shutdown(wait=False))
-    return _comparison_executor
 
 # Weights for overall score (must sum to 1.0)
 WEIGHT_FUNDAMENTAL = 0.35
@@ -201,26 +189,15 @@ def run_full_analysis(
 
 def _run_single_for_comparison(ticker: str) -> dict[str, Any] | None:
     """
-    Wrapper for run_full_analysis that can be pickled for ProcessPoolExecutor.
-    Imports are done inside to ensure each process has its own Django setup.
+    Wrapper for comparison execution.
     """
-    import django
-    import os
-
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
-    try:
-        django.setup()
-    except RuntimeError:
-        pass  # Already configured
-
     return run_full_analysis(ticker=ticker, include_report=False)
 
 
 def run_parallel_comparison(tickers: list[str]) -> dict[str, Any]:
     """
-    Run full analysis for multiple tickers using ProcessPoolExecutor for true
-    CPU parallelism. Each ticker runs in a separate OS process, so 4-5 tickers
-    complete in roughly the same wall-clock time as a single ticker.
+    Run full analysis for multiple tickers concurrently in threads so all
+    tasks share one in-memory FinBERT instance in this Django process.
 
     Returns { "results": { ticker: analysis_result | { "error": str } } }
     """
@@ -241,25 +218,37 @@ def run_parallel_comparison(tickers: list[str]) -> dict[str, Any]:
         len(clean_tickers),
     )
 
-    # Use global executor to reuse process environments and FinBERT model instances
-    executor = get_comparison_executor()
+    # Ensure FinBERT is loaded once before workers begin.
+    prewarm_started = time.perf_counter()
+    finbert_ready = preload_finbert_model()
+    _timing_log(
+        timing_logs_enabled,
+        "PROCESS_STAGE finbert_prewarm ready=%s duration_s=%.3f",
+        finbert_ready,
+        time.perf_counter() - prewarm_started,
+    )
+    if not finbert_ready:
+        logger.warning(
+            "FinBERT prewarm failed before comparison; sentiment will use neutral fallback."
+        )
 
-    future_to_ticker = {
-        executor.submit(_run_single_for_comparison, ticker): ticker
-        for ticker in clean_tickers
-    }
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_ticker = {
+            executor.submit(_run_single_for_comparison, ticker): ticker
+            for ticker in clean_tickers
+        }
 
-    for future in concurrent.futures.as_completed(future_to_ticker):
-        ticker = future_to_ticker[future]
-        try:
-            result = future.result()
-            if result is None:
-                results[ticker] = {"error": "Ticker not found or invalid"}
-            else:
-                results[ticker] = result
-        except Exception as exc:
-            logger.exception("Comparison analysis failed for %s", ticker)
-            results[ticker] = {"error": str(exc)}
+        for future in concurrent.futures.as_completed(future_to_ticker):
+            ticker = future_to_ticker[future]
+            try:
+                result = future.result()
+                if result is None:
+                    results[ticker] = {"error": "Ticker not found or invalid"}
+                else:
+                    results[ticker] = result
+            except Exception as exc:
+                logger.exception("Comparison analysis failed for %s", ticker)
+                results[ticker] = {"error": str(exc)}
 
     _timing_log(
         timing_logs_enabled,
