@@ -137,7 +137,7 @@ export async function fetchAnalysis(
 
   const requestPromise = (async () => {
     return apiRequest<AnalysisResponse>(
-      `/api/analysis/${encodeURIComponent(cleanTicker)}?include_report=true`,
+      `/api/analysis/${encodeURIComponent(cleanTicker)}?include_report=false`,
     )
   })()
 
@@ -147,6 +147,30 @@ export async function fetchAnalysis(
   } finally {
     inFlightAnalysisRequests.delete(requestKey)
   }
+}
+
+export interface ReportBundleResponse {
+  source: string
+  fullReport: string
+  sections: import('./types').ReportSections
+}
+
+export async function fetchAnalysisReport(
+  ticker: string,
+  analysisData: Omit<AnalysisResponse, 'ticker' | 'report' | 'reportSections' | 'reportSource' | 'error'>
+): Promise<ReportBundleResponse> {
+  const cleanTicker = ticker.trim().toUpperCase()
+  return apiRequest<ReportBundleResponse>('/api/analysis/report', {
+    method: 'POST',
+    body: JSON.stringify({
+      ticker: cleanTicker,
+      fundamental_result: analysisData.fundamental,
+      technical_result: analysisData.technical,
+      sentiment_result: analysisData.sentiment,
+      overall_score: analysisData.overview.overallScore,
+      verdict: analysisData.overview.verdict,
+    })
+  })
 }
 
 export async function fetchChartData(

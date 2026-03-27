@@ -1,17 +1,44 @@
 """
 Analysis API: single entry point for the frontend. GET /api/analysis/{ticker}/
 """
+from typing import Any
+
 from ninja import Router, Schema
 
 from analysis.search import search_companies
 from analysis.services import run_full_analysis, run_parallel_comparison
 from technical.services import get_chart_data
+from reports.services import generate_report_bundle
 
 router = Router(tags=["analysis"])
 
 
 class CompareRequest(Schema):
     tickers: list[str]
+
+
+class ReportRequest(Schema):
+    ticker: str
+    fundamental_result: dict[str, Any] | None = None
+    technical_result: dict[str, Any] | None = None
+    sentiment_result: dict[str, Any] | None = None
+    overall_score: float
+    verdict: str
+
+
+@router.post("/analysis/report")
+def generate_report_endpoint(request, payload: ReportRequest):
+    """
+    Stateless endpoint to generate the LLM report using provided analysis data.
+    """
+    return generate_report_bundle(
+        ticker=payload.ticker,
+        fundamental_result=payload.fundamental_result,
+        technical_result=payload.technical_result,
+        sentiment_result=payload.sentiment_result,
+        overall_score=payload.overall_score,
+        verdict=payload.verdict
+    )
 
 
 @router.post("/analysis/compare")

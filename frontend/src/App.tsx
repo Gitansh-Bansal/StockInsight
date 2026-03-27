@@ -685,6 +685,7 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [retryKey, setRetryKey] = useState(0)
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -693,6 +694,31 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
       .then((payload) => {
         if (!cancelled) {
           setAnalysis(payload)
+          // If the analysis doesn't have a report yet, generate it statelessly
+          if (!payload.reportSections || !payload.reportSections.overall) {
+            setIsGeneratingReport(true)
+            import('./api').then(({ fetchAnalysisReport }) => {
+              return fetchAnalysisReport(ticker, payload)
+            })
+            .then((reportPayload) => {
+              if (!cancelled) {
+                setAnalysis((prev) => prev ? {
+                  ...prev,
+                  report: reportPayload.fullReport,
+                  reportSections: reportPayload.sections,
+                  reportSource: reportPayload.source,
+                } : prev)
+              }
+            })
+            .catch((err) => {
+              console.error('Failed to generate report', err)
+            })
+            .finally(() => {
+              if (!cancelled) {
+                setIsGeneratingReport(false)
+              }
+            })
+          }
         }
       })
       .catch((err: unknown) => {
@@ -800,7 +826,7 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
         </div>
       )}
 
-      {!isLoading && !error && analysis && renderSection(tab, analysis, ticker)}
+      {!isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport)}
     </section>
   )
 }
@@ -2787,10 +2813,23 @@ function IndicatorMiniTooltip({
   )
 }
 
-function FullReportSection({ analysis }: { analysis: AnalysisResponse }) {
+function FullReportSection({ analysis, isGeneratingReport }: { analysis: AnalysisResponse, isGeneratingReport?: boolean }) {
   const reportText = normalizeInlineBulletLists(
     emphasizeSummaryLabel(analysis.report?.trim() ?? ''),
   )
+
+  if (isGeneratingReport && !reportText) {
+    return (
+      <article className="panel reveal">
+        <header className="panel-head">
+          <h2>FULL REPORT</h2>
+        </header>
+        <div className="full-report-markdown">
+          <p className="analysis-copy"><em>Generating Summary...</em></p>
+        </div>
+      </article>
+    )
+  }
 
   if (!reportText) {
     return (
@@ -3045,16 +3084,23 @@ function renderSection(
   tab: AnalysisTab,
   analysis: AnalysisResponse,
   ticker: string,
+  isGeneratingReport: boolean = false,
 ) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
   const displayCurrency = resolveAnalysisCurrency(analysis)
+  
+  const getLlmSummary = (key: keyof ReportSections): string | undefined => {
+    if (llmSections[key]) return llmSections[key]
+    if (isGeneratingReport) return 'Generating Summary...'
+    return undefined
+  }
 
   switch (tab) {
     case 'fundamental':
       return (
         <FundamentalSection
           result={analysis.fundamental}
-          llmSummary={llmSections.fundamental}
+          llmSummary={getLlmSummary('fundamental')}
           displayCurrency={displayCurrency}
         />
       )
@@ -3062,7 +3108,7 @@ function renderSection(
       return (
         <TechnicalSection
           result={analysis.technical}
-          llmSummary={llmSections.technical}
+          llmSummary={getLlmSummary('technical')}
           ticker={ticker}
           companyName={
             analysis.fundamental?.data?.shortName ??
@@ -3077,20 +3123,23 @@ function renderSection(
       return (
         <SentimentSection
           result={analysis.sentiment}
-          llmSummary={llmSections.sentiment}
+          llmSummary={getLlmSummary('sentiment')}
         />
       )
     case 'full-report':
-      return <FullReportSection analysis={analysis} />
+      // Show full report section, but if generating, maybe we can wait or show a placeholder in FullReportSection 
+      // FullReportSection receives analysis which already has report as undefined, so it might say unavailable. 
+      // We will handle FullReportSection below if needed.
+      return <FullReportSection analysis={analysis} isGeneratingReport={isGeneratingReport} />
     case 'overview':
     default:
       return (
         <OverviewSection
           overview={analysis.overview}
-          llmSummary={llmSections.overall}
+          llmSummary={getLlmSummary('overall')}
           technical={analysis.technical}
           sentiment={analysis.sentiment}
-          sentimentLlm={llmSections.sentiment}
+          sentimentLlm={getLlmSummary('sentiment')}
           ticker={ticker}
           displayCurrency={displayCurrency}
         />
