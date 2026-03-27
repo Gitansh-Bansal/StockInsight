@@ -603,6 +603,42 @@ function ComparePage() {
                   const r = getResult(t)
                   return r?.technical?.signal ?? '—'
                 }} />
+                <CompareRow label="Sector P/E (vs Sector)" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  const spa = r?.fundamental?.data?.sectorPeersAnalysis
+                  if (!spa) return '—'
+                  const stockPE = spa.trailing.rawValue
+                  const sectorMean = spa.trailing.sectorMean
+                  if (stockPE == null && sectorMean == null) return '—'
+                  const stockStr = stockPE != null ? stockPE.toFixed(1) + 'x' : 'N/A'
+                  const meanStr = sectorMean != null ? sectorMean.toFixed(1) + 'x avg' : ''
+                  return <span style={{ fontSize: '0.85rem' }}>{stockStr}{meanStr ? <span style={{ color: 'var(--muted)', marginLeft: '0.3rem' }}>vs {meanStr}</span> : null}</span>
+                }} />
+                <CompareRow label="Valuation" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  const spa = r?.fundamental?.data?.sectorPeersAnalysis
+                  if (!spa) return '—'
+                  const label = spa.trailing.relativeStandingLabel
+                  if (!label) return '—'
+                  const lc = label.toLowerCase()
+                  const color = lc.includes('under') ? '#10b981' : lc.includes('over') ? '#ef4444' : 'var(--muted)'
+                  const bg = lc.includes('under') ? 'rgba(16,185,129,0.12)' : lc.includes('over') ? 'rgba(239,68,68,0.12)' : 'rgba(0,0,0,0.06)'
+                  return (
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '0.2rem 0.55rem',
+                      borderRadius: '5px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      color,
+                      backgroundColor: bg,
+                      border: `1px solid ${color}`,
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {label}
+                    </span>
+                  )
+                }} />
                 <tr className="compare-action-row">
                   <td className="compare-metric-col"></td>
                   {orderedTickers.map((t) => (
