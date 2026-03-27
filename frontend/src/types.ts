@@ -198,3 +198,7 @@ export interface SearchSuggestion {
   exchange?: string
   type?: string
 }
+
+export interface ComparisonResponse {
+  results: Record<string, AnalysisResponse | { error: string }>
+}

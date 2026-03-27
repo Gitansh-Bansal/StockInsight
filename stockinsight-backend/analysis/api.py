@@ -1,13 +1,29 @@
 """
 Analysis API: single entry point for the frontend. GET /api/analysis/{ticker}/
 """
-from ninja import Router
+from ninja import Router, Schema
 
 from analysis.search import search_companies
-from analysis.services import run_full_analysis
+from analysis.services import run_full_analysis, run_parallel_comparison
 from technical.services import get_chart_data
 
 router = Router(tags=["analysis"])
+
+
+class CompareRequest(Schema):
+    tickers: list[str]
+
+
+@router.post("/analysis/compare")
+def compare_stocks(request, payload: CompareRequest):
+    """
+    Run full analysis for multiple tickers in parallel (separate OS processes).
+    Reports are skipped for speed; use the single-ticker endpoint for full reports.
+    """
+    tickers = payload.tickers[:10]  # cap at 10
+    if not tickers:
+        return {"results": {}}
+    return run_parallel_comparison(tickers)
 
 
 @router.get("/analysis/{ticker}")
@@ -27,6 +43,7 @@ def get_analysis(
     if result is None:
         return {"error": "Ticker not found or invalid"}, 404
     return result
+
 
 @router.get("/analysis/chart/{ticker}")
 def fetch_chart(
@@ -53,3 +70,4 @@ def search_symbols(
         "query": q.strip(),
         "suggestions": search_companies(q, limit=limit),
     }
+

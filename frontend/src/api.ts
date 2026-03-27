@@ -1,4 +1,4 @@
-import type { AnalysisResponse, AuthUser, OhlcvPoint, SearchSuggestion } from './types'
+import type { AnalysisResponse, AuthUser, ComparisonResponse, OhlcvPoint, SearchSuggestion } from './types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
   /\/$/,
@@ -207,4 +207,17 @@ export async function fetchSearchSuggestions(
       inFlightSearchRequests.delete(requestKey)
     }
   }
+}
+
+export async function fetchComparisonAnalysis(
+  tickers: string[],
+): Promise<ComparisonResponse> {
+  const cleanTickers = tickers
+    .map((t) => t.trim().toUpperCase())
+    .filter(Boolean)
+
+  return apiRequest<ComparisonResponse>('/api/analysis/compare', {
+    method: 'POST',
+    body: JSON.stringify({ tickers: cleanTickers }),
+  })
 }

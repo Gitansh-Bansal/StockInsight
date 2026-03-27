@@ -9,11 +9,12 @@ import {
 import './App.css'
 import { AuthPanel } from './components/AuthPanel'
 import { StockSearchForm } from './components/StockSearchForm'
-import { fetchAnalysis, fetchCurrentUser, loginUser, logoutUser, registerUser } from './api'
+import { fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, logoutUser, registerUser } from './api'
 import type {
   AnalysisResponse,
   AuthMode,
   AuthUser,
+  ComparisonResponse,
   FundamentalData,
   OhlcvPoint,
   ReportSections,
@@ -41,6 +42,7 @@ type AppRoute =
   | { type: 'home' }
   | { type: 'auth'; mode: AuthMode }
   | { type: 'stock'; ticker: string; tab: AnalysisTab }
+  | { type: 'compare' }
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous'
 
@@ -102,6 +104,10 @@ function App() {
     navigate('/')
   }, [navigate])
 
+  const goCompare = useCallback(() => {
+    navigate('/compare')
+  }, [navigate])
+
   const openAuthPage = useCallback(
     (mode: AuthMode) => {
       navigate(mode === 'signup' ? '/signup' : '/login')
@@ -157,6 +163,7 @@ function App() {
         onLogout={handleLogout}
         onSearch={handleSearch}
         onHome={goHome}
+        onCompare={goCompare}
       />
 
       <main className="content">
@@ -167,6 +174,8 @@ function App() {
             tab={route.tab}
             onTabChange={(tab) => navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`)}
           />
+        ) : route.type === 'compare' ? (
+          <ComparePage />
         ) : route.type === 'auth' ? (
           <AuthPage
             authMode={route.mode}
@@ -175,7 +184,7 @@ function App() {
             onSignup={handleSignup}
           />
         ) : (
-          <HomePage onSearch={handleSearch} user={authUser} />
+          <HomePage onSearch={handleSearch} onCompare={goCompare} user={authUser} />
         )}
       </main>
     </div>
@@ -190,6 +199,7 @@ type HeaderBarProps = {
   onLogout: () => void
   onSearch: (ticker: string) => void
   onHome: () => void
+  onCompare: () => void
   showSearch: boolean
   user: AuthUser | null
 }
@@ -202,6 +212,7 @@ function HeaderBar({
   onLogout,
   onSearch,
   onHome,
+  onCompare,
   showSearch,
   user,
 }: HeaderBarProps) {
@@ -248,6 +259,9 @@ function HeaderBar({
         <div className="top-search-placeholder" aria-hidden="true" />
       )}
       <div className="top-actions">
+        <button type="button" className="compare-nav-btn" onClick={onCompare}>
+          Compare
+        </button>
         {authStatus === 'loading' ? (
           <span className="session-chip">Restoring session...</span>
         ) : isAuthenticated ? (
@@ -280,10 +294,11 @@ function HeaderBar({
 
 type HomePageProps = {
   onSearch: (ticker: string) => void
+  onCompare: () => void
   user: AuthUser | null
 }
 
-function HomePage({ onSearch, user }: HomePageProps) {
+function HomePage({ onSearch, onCompare, user }: HomePageProps) {
   if (user) {
     return (
       <section className="hero">
@@ -304,6 +319,12 @@ function HomePage({ onSearch, user }: HomePageProps) {
             buttonLabel="Open Analysis"
           />
           <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
+          <div className="hero-compare-cta">
+            <span className="hero-divider-text">or</span>
+            <button type="button" className="compare-cta-btn" onClick={onCompare}>
+              Compare Multiple Stocks
+            </button>
+          </div>
         </div>
       </section>
     )
@@ -327,12 +348,290 @@ function HomePage({ onSearch, user }: HomePageProps) {
           buttonLabel="Open Analysis"
         />
         <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
+        <div className="hero-compare-cta">
+          <span className="hero-divider-text">or</span>
+          <button type="button" className="compare-cta-btn" onClick={onCompare}>
+            Compare Multiple Stocks
+          </button>
+        </div>
       </div>
     </section>
   )
 }
 
+function ComparePage() {
+  const [tickers, setTickers] = useState<string[]>([])
+  const [results, setResults] = useState<ComparisonResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const addTicker = useCallback((raw: string) => {
+    const ticker = raw.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, '')
+    if (!ticker) return
+    setTickers((prev) => {
+      if (prev.includes(ticker)) return prev
+      if (prev.length >= 10) return prev
+      return [...prev, ticker]
+    })
+  }, [])
+
+  const removeTicker = useCallback((ticker: string) => {
+    setTickers((prev) => prev.filter((t) => t !== ticker))
+  }, [])
+
+  const handleRun = useCallback(async () => {
+    if (tickers.length < 2) return
+    setIsLoading(true)
+    setError('')
+    setResults(null)
+    setElapsedSeconds(0)
+
+    const startTime = Date.now()
+    timerRef.current = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
+
+    try {
+      const response = await fetchComparisonAnalysis(tickers)
+      setResults(response)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Comparison failed.')
+    } finally {
+      setIsLoading(false)
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
+    }
+  }, [tickers])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [])
+
+  const navigate = useCallback((path: string) => {
+    window.history.pushState({}, '', path)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, [])
+
+  const orderedTickers = useMemo(() => {
+    if (!results) return []
+    return tickers.filter((t) => t in results.results)
+  }, [tickers, results])
+
+  const getResult = useCallback((ticker: string): AnalysisResponse | null => {
+    if (!results) return null
+    const entry = results.results[ticker]
+    if (!entry || 'error' in entry) return null
+    return entry as AnalysisResponse
+  }, [results])
+
+  const getError = useCallback((ticker: string): string | null => {
+    if (!results) return null
+    const entry = results.results[ticker]
+    if (entry && 'error' in entry) return (entry as { error: string }).error
+    return null
+  }, [results])
+
+  return (
+    <section className="compare-page">
+      <div className="compare-header reveal">
+        <p className="kicker">Side-by-Side Analysis</p>
+        <h1>Compare Stocks</h1>
+        <p>Add up to 10 tickers and run a full parallel analysis to compare them.</p>
+      </div>
+
+      <div className="compare-input-area reveal">
+        <div className="compare-ticker-chips">
+          {tickers.map((t) => (
+            <span key={t} className="compare-chip">
+              {t}
+              <button
+                type="button"
+                className="compare-chip-remove"
+                onClick={() => removeTicker(t)}
+                aria-label={`Remove ${t}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="compare-input-row">
+          <StockSearchForm
+            className="compare-search"
+            onSearch={addTicker}
+            placeholder={tickers.length >= 10 ? 'Max 10 tickers' : 'Add a ticker...'}
+            ariaLabel="Add ticker to comparison"
+            buttonLabel="Add"
+          />
+        </div>
+        <div className="compare-actions">
+          <button
+            type="button"
+            className="compare-run-btn"
+            onClick={handleRun}
+            disabled={tickers.length < 2 || isLoading}
+          >
+            {isLoading ? `Analyzing... (${elapsedSeconds}s)` : 'Run Comparison'}
+          </button>
+          {tickers.length > 0 && !isLoading && (
+            <button
+              type="button"
+              className="compare-clear-btn"
+              onClick={() => { setTickers([]); setResults(null); setError('') }}
+            >
+              Clear All
+            </button>
+          )}
+        </div>
+        {tickers.length > 0 && tickers.length < 2 && (
+          <p className="compare-hint">Add at least 2 tickers to compare.</p>
+        )}
+      </div>
+
+      {isLoading && (
+        <div className="compare-loading reveal">
+          <div className="compare-loading-spinner" />
+          <p>Running parallel analysis for {tickers.length} stocks...</p>
+          <p className="compare-loading-elapsed">{elapsedSeconds}s elapsed</p>
+        </div>
+      )}
+
+      {error && !isLoading && (
+        <div className="error-card reveal">
+          <h2>Comparison failed</h2>
+          <p>{error}</p>
+          <button type="button" onClick={handleRun}>Retry</button>
+        </div>
+      )}
+
+      {results && !isLoading && orderedTickers.length > 0 && (
+        <div className="compare-results reveal">
+          <div className="compare-table-wrapper">
+            <table className="compare-table">
+              <thead>
+                <tr>
+                  <th className="compare-metric-col">Metric</th>
+                  {orderedTickers.map((t) => (
+                    <th key={t} className="compare-ticker-col">{t}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <CompareRow label="Company" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  const err = getError(t)
+                  if (err) return <span className="compare-error-cell" title={err}>Error</span>
+                  return r?.fundamental?.data?.shortName ?? r?.fundamental?.data?.longName ?? t
+                }} />
+                <CompareRow label="Price" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  if (!r) return '—'
+                  const price = r.fundamental?.data?.currentPrice ?? r.technical?.indicators?.close
+                  const currency = r.fundamental?.data?.currency ?? r.technical?.currency ?? 'USD'
+                  return price != null ? formatCurrency(price, currency) : '—'
+                }} />
+                <CompareRow label="Overall Score" tickers={orderedTickers} className="compare-score-row" render={(t) => {
+                  const r = getResult(t)
+                  if (!r) return '—'
+                  return <span className={`compare-score tone-${toneFromVerdict(r.overview.verdict)}`}>{r.overview.overallScore.toFixed(1)}</span>
+                }} />
+                <CompareRow label="Verdict" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  if (!r) return '—'
+                  return <span className={`verdict ${toneFromVerdict(r.overview.verdict)}`}>{r.overview.verdict}</span>
+                }} />
+                <CompareRow label="Fundamental" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  return r?.overview.fundamentalScore != null ? r.overview.fundamentalScore.toFixed(1) : '—'
+                }} />
+                <CompareRow label="Technical" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  return r?.overview.technicalScore != null ? r.overview.technicalScore.toFixed(1) : '—'
+                }} />
+                <CompareRow label="Sentiment" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  return r?.overview.sentimentScore != null ? r.overview.sentimentScore.toFixed(1) : '—'
+                }} />
+                <CompareRow label="Market Cap" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  const mc = r?.fundamental?.data?.marketCap
+                  return mc != null ? compactFormatter.format(mc) : '—'
+                }} />
+                <CompareRow label="P/E (Trailing)" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  const pe = r?.fundamental?.data?.trailingPE
+                  return pe != null ? pe.toFixed(2) : '—'
+                }} />
+                <CompareRow label="ROE" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  const roe = r?.fundamental?.data?.returnOnEquity
+                  return roe != null ? `${(roe * 100).toFixed(1)}%` : '—'
+                }} />
+                <CompareRow label="Debt/Equity" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  const de = r?.fundamental?.data?.debtToEquity
+                  return de != null ? de.toFixed(2) : '—'
+                }} />
+                <CompareRow label="Trend" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  return r?.technical?.trend ?? '—'
+                }} />
+                <CompareRow label="Signal" tickers={orderedTickers} render={(t) => {
+                  const r = getResult(t)
+                  return r?.technical?.signal ?? '—'
+                }} />
+                <tr className="compare-action-row">
+                  <td className="compare-metric-col"></td>
+                  {orderedTickers.map((t) => (
+                    <td key={t}>
+                      {getResult(t) ? (
+                        <button
+                          type="button"
+                          className="compare-view-btn"
+                          onClick={() => navigate(`/stock/${encodeURIComponent(t)}/overview`)}
+                        >
+                          View Full Analysis
+                        </button>
+                      ) : (
+                        <span className="compare-error-cell">{getError(t) ?? 'N/A'}</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function CompareRow({ label, tickers, render, className }: {
+  label: string
+  tickers: string[]
+  render: (ticker: string) => React.ReactNode
+  className?: string
+}) {
+  return (
+    <tr className={className}>
+      <td className="compare-metric-col">{label}</td>
+      {tickers.map((t) => (
+        <td key={t}>{render(t)}</td>
+      ))}
+    </tr>
+  )
+}
+
 type AuthPageProps = {
+
   authMode: AuthMode
   onAuthModeChange: (mode: AuthMode) => void
   onLogin: (values: { identifier: string; password: string }) => Promise<void>
@@ -2892,6 +3191,10 @@ function parseRoute(pathname: string): AppRoute {
 
   if (/^\/signup\/?$/i.test(pathname)) {
     return { type: 'auth', mode: 'signup' }
+  }
+
+  if (/^\/compare\/?$/i.test(pathname)) {
+    return { type: 'compare' }
   }
 
   const match = pathname.match(/^\/stock\/([^/]+)(?:\/([^/]+))?\/?$/i)

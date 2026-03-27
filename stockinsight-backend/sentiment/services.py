@@ -62,9 +62,20 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _build_news_queries(ticker: str, stock_name: str | None) -> list[str]:
-    """Build a stable, unique query list (ticker first, then company name if distinct)."""
+    """
+    Build a stable, unique query list for provider searches.
+    Includes ticker variants (for exchange suffixes like .NS/.BO) and stock name.
+    """
     queries: list[str] = []
-    for candidate in [ticker, stock_name]:
+    ticker_value = (ticker or "").strip()
+    ticker_core = re.split(r"[.:/]", ticker_value, maxsplit=1)[0].strip()
+
+    candidates: list[str | None] = [ticker_value]
+    if ticker_core and ticker_core.lower() != ticker_value.lower():
+        candidates.append(ticker_core)
+    candidates.append(stock_name)
+
+    for candidate in candidates:
         value = (candidate or "").strip()
         if not value:
             continue
@@ -216,10 +227,11 @@ def _load_keys() -> tuple[str | None, str | None, str | None, str | None, bool]:
 def _fetch_from_finnhub(
     ticker: str,
     api_key: str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], bool]:
     """Fetch company-specific news from Finnhub for the given ticker."""
     url = FINNHUB_COMPANY_NEWS_URL
     headlines: list[dict[str, Any]] = []
+    provider_failed = False
 
     lookback_days = max(
         0,
@@ -238,9 +250,30 @@ def _fetch_from_finnhub(
         }
         res = requests.get(url, params=params, timeout=10)
         res.raise_for_status()
-        data = res.json() or []
+        data: Any = res.json() or []
+
+        if isinstance(data, dict):
+            error_message = (data.get("error") or data.get("message") or "").strip()
+            if error_message:
+                provider_failed = True
+                logger.warning("Finnhub returned error for ticker %s: %s", ticker, error_message)
+                return [], provider_failed
+
+            # Defensive handling: some APIs wrap lists in a top-level key.
+            data = data.get("data") or data.get("result") or []
+
+        if not isinstance(data, list):
+            provider_failed = True
+            logger.warning(
+                "Finnhub returned unexpected payload type for ticker %s: %s",
+                ticker,
+                type(data).__name__,
+            )
+            return [], provider_failed
 
         for art in data[:200]:
+            if not isinstance(art, dict):
+                continue
             title = art.get("headline") or ""
             if not title:
                 continue
@@ -263,11 +296,12 @@ def _fetch_from_finnhub(
                 }
             )
     except Exception as e:
+        provider_failed = True
         logger.warning("Finnhub error for ticker %s: %s", ticker, e)
 
     # print(headlines)
 
-    return headlines
+    return headlines, provider_failed
 
 
 def _fetch_from_newsdataio(ticker: str, stock_name: str | None, api_key: str) -> list[dict[str, Any]]:
@@ -277,29 +311,38 @@ def _fetch_from_newsdataio(ticker: str, stock_name: str | None, api_key: str) ->
 
     for query in _build_news_queries(ticker, stock_name):
         try:
-            q = f"${query}" if query.upper() == ticker.upper() else query
             params = {
                 "apikey": api_key,
-                "q": q,
+                "q": query,
                 "language": "en",
                 "removeduplicate": 1,
             }
             res = requests.get(url, params=params, timeout=10)
+            res.raise_for_status()
             data = res.json()
-            if data.get("status") == "success":
-                for art in data.get("results", [])[:50]:
-                    title = art.get("title") or ""
-                    if not title:
-                        continue
-                    headlines.append(
-                        {
-                            "title": title,
-                            "link": art.get("link") or art.get("url") or "",
-                            "source": art.get("source_id") or art.get("creator") or "NewsData.io",
-                            "apiSource": "NewsData.io",
-                            "publishedAt": art.get("pubDate") or art.get("publishedAt") or "",
-                        }
-                    )
+            status = (data.get("status") or "").strip().lower()
+            if status and status != "success":
+                logger.warning(
+                    "NewsData.io non-success for query %s: status=%s message=%s",
+                    query,
+                    data.get("status"),
+                    data.get("message") or data.get("error"),
+                )
+                continue
+
+            for art in data.get("results", [])[:50]:
+                title = art.get("title") or ""
+                if not title:
+                    continue
+                headlines.append(
+                    {
+                        "title": title,
+                        "link": art.get("link") or art.get("url") or "",
+                        "source": art.get("source_id") or art.get("creator") or "NewsData.io",
+                        "apiSource": "NewsData.io",
+                        "publishedAt": art.get("pubDate") or art.get("publishedAt") or "",
+                    }
+                )
         except Exception as e:
             logger.warning("NewsData.io error for query %s: %s", query, e)
 
@@ -321,7 +364,17 @@ def _fetch_from_newsapi(ticker: str, stock_name: str | None, api_key: str) -> li
                 "pageSize": 50,
             }
             res = requests.get(url, params=params, timeout=10)
+            res.raise_for_status()
             data = res.json()
+            if (data.get("status") or "").strip().lower() == "error":
+                logger.warning(
+                    "NewsAPI non-success for query %s: code=%s message=%s",
+                    query,
+                    data.get("code"),
+                    data.get("message"),
+                )
+                continue
+
             for art in data.get("articles", [])[:50]:
                 title = art.get("title") or ""
                 if not title:
@@ -375,7 +428,21 @@ def _fetch_from_newsapi_ai(ticker: str, stock_name: str | None, api_key: str) ->
                 "dataType": "news",
             }
             res = requests.get(url, params=params, timeout=10)
+            res.raise_for_status()
             data = res.json()
+
+            error_message = ""
+            if isinstance(data, dict):
+                err = data.get("error")
+                if isinstance(err, str):
+                    error_message = err.strip()
+                elif isinstance(err, dict):
+                    error_message = str(err.get("message") or err.get("error") or "").strip()
+
+            if error_message:
+                logger.warning("NewsAPI.ai non-success for query %s: %s", query, error_message)
+                continue
+
             for art in ((data.get("articles") or {}).get("results") or [])[:50]:
                 title = art.get("title") or ""
                 if not title:
@@ -413,7 +480,7 @@ def get_sentiment_analysis(
 ) -> dict[str, Any] | None:
     """
     Fetch latest news for ticker with Finnhub as primary source.
-    If Finnhub returns nothing, fallback to NewsData.io + NewsAPI + optional NewsAPI.ai.
+    If Finnhub fails or returns nothing, fallback to NewsData.io + NewsAPI + optional NewsAPI.ai.
     Run FinBERT on titles and return headlines with an overall sentiment score (0-100).
     """
     try:
@@ -426,14 +493,15 @@ def get_sentiment_analysis(
             stock_name = ticker
 
         finnhub_headlines: list[dict[str, Any]] = []
+        finnhub_failed = False
         newsdata_headlines: list[dict[str, Any]] = []
         newsapi_headlines: list[dict[str, Any]] = []
         newsapi_ai_headlines: list[dict[str, Any]] = []
 
         if finnhub_key:
-            finnhub_headlines = _fetch_from_finnhub(ticker, finnhub_key)
+            finnhub_headlines, finnhub_failed = _fetch_from_finnhub(ticker, finnhub_key)
 
-        fallback_used = len(finnhub_headlines) == 0
+        fallback_used = finnhub_failed or len(finnhub_headlines) == 0
         if fallback_used:
             if newsdata_key:
                 newsdata_headlines = _fetch_from_newsdataio(ticker, stock_name, newsdata_key)
@@ -442,10 +510,9 @@ def get_sentiment_analysis(
             if enable_newsapi_ai and newsapi_ai_key:
                 newsapi_ai_headlines = _fetch_from_newsapi_ai(ticker, stock_name, newsapi_ai_key)
 
+        fallback_headlines = newsdata_headlines + newsapi_headlines + newsapi_ai_headlines
         raw_headlines: list[dict[str, Any]] = (
-            finnhub_headlines
-            if finnhub_headlines
-            else (newsdata_headlines + newsapi_headlines + newsapi_ai_headlines)
+            (finnhub_headlines + fallback_headlines) if fallback_used else finnhub_headlines
         )
 
 
@@ -498,9 +565,10 @@ def get_sentiment_analysis(
 
         latest_timestamp = unique_headlines[0].get("publishedAt", "") if unique_headlines else ""
         analysis_logger.info(
-            "SENTIMENT_FETCH_COUNTS ticker=%s finnhub=%d fallback_used=%s newsdata=%d newsapi=%d newsapi_ai=%d raw_total=%d unique_total=%d latest=%s",
+            "SENTIMENT_FETCH_COUNTS ticker=%s finnhub=%d finnhub_failed=%s fallback_used=%s newsdata=%d newsapi=%d newsapi_ai=%d raw_total=%d unique_total=%d latest=%s",
             ticker,
             len(finnhub_headlines),
+            finnhub_failed,
             fallback_used,
             len(newsdata_headlines),
             len(newsapi_headlines),
