@@ -8,7 +8,12 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.re
 const inFlightAnalysisRequests = new Map<string, Promise<AnalysisResponse>>()
 const inFlightSearchRequests = new Map<string, Promise<SearchSuggestion[]>>()
 const searchSuggestionCache = new Map<string, SearchSuggestion[]>()
+const analysisCache = new Map<string, AnalysisResponse>()
 let csrfTokenCache = ''
+
+export function setAnalysisCache(ticker: string, data: AnalysisResponse) {
+  analysisCache.set(ticker.trim().toUpperCase(), data)
+}
 
 function apiUrl(path: string): string {
   if (apiBaseUrl) {
@@ -129,6 +134,12 @@ export async function fetchAnalysis(
   ticker: string,
 ): Promise<AnalysisResponse> {
   const cleanTicker = ticker.trim().toUpperCase()
+  
+  const cached = analysisCache.get(cleanTicker)
+  if (cached) {
+    return cached
+  }
+
   const requestKey = cleanTicker
   const existingRequest = inFlightAnalysisRequests.get(requestKey)
   if (existingRequest) {
@@ -143,7 +154,9 @@ export async function fetchAnalysis(
 
   inFlightAnalysisRequests.set(requestKey, requestPromise)
   try {
-    return await requestPromise
+    const result = await requestPromise
+    analysisCache.set(cleanTicker, result)
+    return result
   } finally {
     inFlightAnalysisRequests.delete(requestKey)
   }
@@ -240,8 +253,16 @@ export async function fetchComparisonAnalysis(
     .map((t) => t.trim().toUpperCase())
     .filter(Boolean)
 
-  return apiRequest<ComparisonResponse>('/api/analysis/compare', {
+  const response = await apiRequest<ComparisonResponse>('/api/analysis/compare', {
     method: 'POST',
     body: JSON.stringify({ tickers: cleanTickers }),
   })
+  
+  for (const [ticker, result] of Object.entries(response.results)) {
+    if (result && typeof result === 'object' && !('error' in result)) {
+      setAnalysisCache(ticker, result as AnalysisResponse)
+    }
+  }
+  
+  return response
 }

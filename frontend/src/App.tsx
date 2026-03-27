@@ -360,12 +360,38 @@ function HomePage({ onSearch, onCompare, user }: HomePageProps) {
 }
 
 function ComparePage() {
-  const [tickers, setTickers] = useState<string[]>([])
-  const [results, setResults] = useState<ComparisonResponse | null>(null)
+  const [tickers, setTickers] = useState<string[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('compareTickers')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+  const [results, setResults] = useState<ComparisonResponse | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('compareResults')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    sessionStorage.setItem('compareTickers', JSON.stringify(tickers))
+  }, [tickers])
+
+  useEffect(() => {
+    if (results) {
+      sessionStorage.setItem('compareResults', JSON.stringify(results))
+    } else {
+      sessionStorage.removeItem('compareResults')
+    }
+  }, [results])
 
   const addTicker = useCallback((raw: string) => {
     const ticker = raw.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, '')
