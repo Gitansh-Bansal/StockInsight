@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 
 import { fetchSearchSuggestions } from '../api'
@@ -8,6 +8,7 @@ type StockSearchFormProps = {
   ariaLabel: string
   buttonLabel: string
   className: string
+  clearOnSearch?: boolean
   initialValue?: string
   onSearch: (ticker: string) => void
   placeholder: string
@@ -17,6 +18,7 @@ export function StockSearchForm({
   ariaLabel,
   buttonLabel,
   className,
+  clearOnSearch = false,
   initialValue = '',
   onSearch,
   placeholder,
@@ -30,6 +32,7 @@ export function StockSearchForm({
   const [highlightSource, setHighlightSource] = useState<'keyboard' | 'mouse' | null>(null)
   const [submitError, setSubmitError] = useState('')
   const listboxId = useId()
+  const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     setQuery(initialValue)
@@ -88,11 +91,20 @@ export function StockSearchForm({
     isFocused && Boolean(query.trim()) && !isLoading && suggestions.length === 0
 
   const chooseSuggestion = (suggestion: SearchSuggestion) => {
-    setQuery(suggestion.ticker)
     setSuggestions([])
     setActiveIndex(-1)
     setHighlightSource(null)
     setSubmitError('')
+    if (clearOnSearch) {
+      setQuery('')
+      setIsFocused(true)
+      onSearch(suggestion.ticker)
+      window.requestAnimationFrame(() => {
+        inputRef.current?.focus()
+      })
+      return
+    }
+    setQuery(suggestion.ticker)
     setIsFocused(false)
     onSearch(suggestion.ticker)
   }
@@ -210,6 +222,7 @@ export function StockSearchForm({
     <form className={className} onSubmit={handleSubmit}>
       <div className="search-field">
         <input
+          ref={inputRef}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value)

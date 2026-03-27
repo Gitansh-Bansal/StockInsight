@@ -480,6 +480,7 @@ function ComparePage() {
         <div className="compare-input-row">
           <StockSearchForm
             className="compare-search"
+            clearOnSearch
             onSearch={addTicker}
             placeholder={tickers.length >= 10 ? 'Max 10 tickers' : 'Add a ticker...'}
             ariaLabel="Add ticker to comparison"
