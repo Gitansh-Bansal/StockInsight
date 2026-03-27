@@ -248,21 +248,45 @@ export async function fetchSearchSuggestions(
 
 export async function fetchComparisonAnalysis(
   tickers: string[],
+  previousResults?: ComparisonResponse | null,
 ): Promise<ComparisonResponse> {
-  const cleanTickers = tickers
+  const cleanTickers = Array.from(new Set(tickers
     .map((t) => t.trim().toUpperCase())
-    .filter(Boolean)
+    .filter(Boolean)))
 
-  const response = await apiRequest<ComparisonResponse>('/api/analysis/compare', {
-    method: 'POST',
-    body: JSON.stringify({ tickers: cleanTickers }),
-  })
-  
-  for (const [ticker, result] of Object.entries(response.results)) {
-    if (result && typeof result === 'object' && !('error' in result)) {
-      setAnalysisCache(ticker, result as AnalysisResponse)
+  const mergedResults: ComparisonResponse['results'] = {}
+  const toFetch: string[] = []
+
+  for (const ticker of cleanTickers) {
+    const previousEntry = previousResults?.results?.[ticker]
+    if (previousEntry && typeof previousEntry === 'object' && !('error' in previousEntry)) {
+      mergedResults[ticker] = previousEntry
+      setAnalysisCache(ticker, previousEntry as AnalysisResponse)
+      continue
+    }
+
+    const cachedEntry = analysisCache.get(ticker)
+    if (cachedEntry) {
+      mergedResults[ticker] = cachedEntry
+      continue
+    }
+
+    toFetch.push(ticker)
+  }
+
+  if (toFetch.length > 0) {
+    const response = await apiRequest<ComparisonResponse>('/api/analysis/compare', {
+      method: 'POST',
+      body: JSON.stringify({ tickers: toFetch }),
+    })
+
+    for (const [ticker, result] of Object.entries(response.results)) {
+      mergedResults[ticker] = result
+      if (result && typeof result === 'object' && !('error' in result)) {
+        setAnalysisCache(ticker, result as AnalysisResponse)
+      }
     }
   }
-  
-  return response
+
+  return { results: mergedResults }
 }

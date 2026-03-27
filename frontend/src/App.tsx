@@ -420,7 +420,7 @@ function ComparePage() {
     }, 1000)
 
     try {
-      const response = await fetchComparisonAnalysis(tickers)
+      const response = await fetchComparisonAnalysis(tickers, results)
       setResults(response)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Comparison failed.')
@@ -431,7 +431,7 @@ function ComparePage() {
         timerRef.current = null
       }
     }
-  }, [tickers])
+  }, [tickers, results])
 
   useEffect(() => {
     return () => {
@@ -723,19 +723,26 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
           // If the analysis doesn't have a report yet, generate it statelessly
           if (!payload.reportSections || !payload.reportSections.overall) {
             setIsGeneratingReport(true)
-            import('./api').then(({ fetchAnalysisReport }) => {
-              return fetchAnalysisReport(ticker, payload)
-            })
-            .then((reportPayload) => {
-              if (!cancelled) {
-                setAnalysis((prev) => prev ? {
-                  ...prev,
+            import('./api')
+              .then(async ({ fetchAnalysisReport, setAnalysisCache }) => {
+                const reportPayload = await fetchAnalysisReport(ticker, payload)
+                return { reportPayload, setAnalysisCache }
+              })
+              .then(({ reportPayload, setAnalysisCache }) => {
+                const nextAnalysis: AnalysisResponse = {
+                  ...payload,
                   report: reportPayload.fullReport,
                   reportSections: reportPayload.sections,
                   reportSource: reportPayload.source,
-                } : prev)
-              }
-            })
+                }
+
+                // Persist generated report so re-opening the same ticker doesn't regenerate it.
+                setAnalysisCache(ticker, nextAnalysis)
+
+                if (!cancelled) {
+                  setAnalysis(nextAnalysis)
+                }
+              })
             .catch((err) => {
               console.error('Failed to generate report', err)
             })
