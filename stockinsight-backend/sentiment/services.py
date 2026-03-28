@@ -27,6 +27,7 @@ NEWSAPIAI_REALTIME_LOOKBACK_DAYS = 2
 # Lazy load FinBERT to avoid heavy import at Django startup
 _finbert_pipeline = None
 _finbert_lock = threading.Lock()
+_inference_lock = threading.Lock()
 
 
 def _get_finbert():
@@ -608,7 +609,8 @@ def get_sentiment_analysis(
         per_headline = []
         if pipe and titles_for_model:
             try:
-                results = pipe(titles_for_model)
+                with _inference_lock:
+                    results = pipe(titles_for_model)
                 for h, res in zip(limited, results):
                     per_headline.append(
                         {
@@ -639,7 +641,24 @@ def get_sentiment_analysis(
                 for h in limited
             ]
 
-        overall = _analyze_with_finbert([h["title"] for h in limited])
+        # Calculate overall score directly to prevent duplicate inference
+        score_map = {"positive": 1, "negative": -1, "neutral": 0}
+        total = 0.0
+        count = 0
+        for ph in per_headline:
+            label = ph.get("sentiment", "neutral").lower()
+            if label == "neutral":
+                continue
+            conf = float(ph.get("sentimentScore", 0.0))
+            base = score_map.get(label, 0)
+            total += base * conf
+            count += 1
+
+        if not count:
+            overall = 50.0
+        else:
+            avg = total / count
+            overall = round(50 + 50 * max(-1.0, min(1.0, avg)), 1)
 
         return {
             "data": {
