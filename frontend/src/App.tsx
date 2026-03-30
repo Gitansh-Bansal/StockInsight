@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactElement } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   AreaChart, Area,
@@ -53,6 +52,10 @@ const compactFormatter = new Intl.NumberFormat('en-US', {
 
 const decimalFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
+})
+
+const wholeNumberFormatter = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 0,
 })
 
 const currencyFormatterCache = new Map<string, Intl.NumberFormat>()
@@ -172,6 +175,7 @@ function App() {
             key={route.ticker}
             ticker={route.ticker}
             tab={route.tab}
+            isAuthenticated={authStatus === 'authenticated'}
             onTabChange={(tab) =>
               navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`, {
                 replace: true,
@@ -752,10 +756,11 @@ function AuthPage({
 type AnalysisPageProps = {
   ticker: string
   tab: AnalysisTab
+  isAuthenticated: boolean
   onTabChange: (tab: AnalysisTab) => void
 }
 
-function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
+function AnalysisPage({ ticker, tab, isAuthenticated, onTabChange }: AnalysisPageProps) {
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -908,7 +913,7 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
         </div>
       )}
 
-      {!isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport)}
+      {!isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport, isAuthenticated)}
     </section>
   )
 }
@@ -2895,42 +2900,894 @@ function IndicatorMiniTooltip({
   )
 }
 
-function FullReportSection({ analysis, isGeneratingReport }: { analysis: AnalysisResponse, isGeneratingReport?: boolean }) {
+function FullReportSection({
+  analysis,
+  isGeneratingReport,
+  isAuthenticated,
+}: {
+  analysis: AnalysisResponse
+  isGeneratingReport?: boolean
+  isAuthenticated: boolean
+}) {
+  const reportPrintRef = useRef<HTMLElement | null>(null)
   const reportText = normalizeInlineBulletLists(
     emphasizeSummaryLabel(analysis.report?.trim() ?? ''),
   )
+  const sections = analysis.reportSections ?? {}
+  const fundamentalData = analysis.fundamental?.data
+  const technicalResult = analysis.technical
+  const technicalData = technicalResult ? resolveTechnicalData(technicalResult) : null
+  const displayCurrency = resolveAnalysisCurrency(analysis)
+  const companyName =
+    fundamentalData?.shortName ?? fundamentalData?.longName ?? analysis.ticker
+  const sectorLabel = sanitizeReportText(fundamentalData?.sector) || 'Equities'
+  const industryLabel = sanitizeReportText(fundamentalData?.industry) || 'Technology'
 
-  if (isGeneratingReport && !reportText) {
-    return (
-      <article className="panel reveal">
-        <header className="panel-head">
-          <h2>FULL REPORT</h2>
-        </header>
-        <div className="full-report-markdown">
-          <p className="analysis-copy"><em>Generating Summary...</em></p>
-        </div>
-      </article>
-    )
+  const latestPrice =
+    fundamentalData?.currentPrice ??
+    technicalData?.lastClose ??
+    technicalResult?.indicators?.close ??
+    null
+  const ohlcv = technicalData?.ohlcv ?? technicalResult?.ohlcv ?? []
+  let previousClose: number | null = null
+  if (ohlcv.length >= 2) {
+    const value = ohlcv[ohlcv.length - 2]?.close
+    if (isFiniteNumber(value)) {
+      previousClose = value
+    }
   }
+  const priceChange =
+    isFiniteNumber(latestPrice) && isFiniteNumber(previousClose)
+      ? latestPrice - previousClose
+      : null
+  const priceChangePercent =
+    isFiniteNumber(priceChange) &&
+    isFiniteNumber(previousClose) &&
+    previousClose !== 0
+      ? (priceChange / previousClose) * 100
+      : null
+  const priceToneClass = !isFiniteNumber(priceChange)
+    ? 'neutral'
+    : priceChange >= 0
+      ? 'positive'
+      : 'negative'
 
-  if (!reportText) {
-    return (
-      <UnavailablePanel title="FULL REPORT">
-        Full report text is not available for this request.
-      </UnavailablePanel>
-    )
+  const consensusRaw = (
+    fundamentalData?.recommendationKey ??
+    analysis.overview.verdict ??
+    'N/A'
+  ).trim()
+  const consensusLabel = consensusRaw ? consensusRaw.toUpperCase() : 'N/A'
+  const consensusTone = toneFromVerdict(consensusRaw)
+  const targetPriceLabel = formatCurrency(fundamentalData?.targetMeanPrice, displayCurrency)
+  const marketCapLabel = formatCompactMoney(fundamentalData?.marketCap, displayCurrency)
+
+  const executiveBriefing = summarizeForCard(
+    sections.overall ?? reportText,
+    isGeneratingReport
+      ? 'Generating report summary...'
+      : 'Overview summary is currently unavailable.',
+    390,
+  )
+  const fundamentalNarrative = pickPrimaryInsight(
+    sections.fundamental,
+    'Fundamental analysis summary is currently unavailable.',
+    210,
+  )
+  const technicalSummaryFallback = technicalResult
+    ? describeTechnicalSignal(technicalResult)
+    : ''
+  const technicalNarrative = pickPrimaryInsight(
+    sections.technical ?? technicalSummaryFallback,
+    'Technical analysis summary is currently unavailable.',
+    210,
+  )
+  const fundamentalSummaryPoints = buildSectionSummaryPoints(
+    sections.fundamental,
+    fundamentalNarrative,
+  )
+  const technicalSummaryPoints = buildSectionSummaryPoints(
+    sections.technical ?? technicalSummaryFallback,
+    technicalNarrative,
+  )
+  const sentimentParsed = parseSentimentSummary(sections.sentiment ?? '')
+  const sentimentSummaryPoints =
+    sentimentParsed.insights
+      .map((item) => sanitizeReportText(item))
+      .filter(Boolean)
+      .slice(0, 4)
+  const sentimentSummaryText = summarizeForCard(
+    sentimentParsed.summary || sections.sentiment,
+    isGeneratingReport
+      ? 'Generating sentiment summary...'
+      : 'Sentiment summary is currently unavailable.',
+    310,
+  )
+  const riskItems = buildRiskItems(sections.riskFactors ?? sections.conclusion)
+
+  const rsiValue = technicalData?.rsi ?? technicalResult?.indicators?.RSI ?? null
+  const sma200 = technicalResult?.indicators?.SMA200 ?? null
+  const technicalSubtext = buildTechnicalSubtext({
+    rsi: rsiValue,
+    sma200,
+    currentPrice: latestPrice,
+    currency: displayCurrency,
+    fallback: technicalNarrative,
+  })
+  const technicalScorePercent = isFiniteNumber(analysis.overview.technicalScore)
+    ? clampPercent(analysis.overview.technicalScore)
+    : toneToPercent(resolveTrendBias(technicalResult?.trend, technicalResult?.signal))
+  const technicalSignalLabel = scoreBand(analysis.overview.technicalScore).toUpperCase()
+  const technicalSignalTone = scoreToTone(analysis.overview.technicalScore)
+
+  const performanceMetrics = [
+    { label: 'P/E Ratio (TTM)', value: formatNumber(fundamentalData?.trailingPE), highlight: false },
+    { label: 'Div Yield', value: formatPercent(fundamentalData?.dividendYield), highlight: false },
+    { label: 'EPS (Diluted)', value: formatCurrency(fundamentalData?.trailingEps, displayCurrency), highlight: false },
+    {
+      label: 'ROE',
+      value: formatPercent(fundamentalData?.returnOnEquity),
+      highlight: isFiniteNumber(fundamentalData?.returnOnEquity) && fundamentalData.returnOnEquity > 0,
+    },
+    { label: 'Beta (5Y)', value: formatNumber(fundamentalData?.beta), highlight: false },
+  ]
+
+  const revenueRows = buildRevenueTrendRows(fundamentalData?.revenueTrend)
+  const financialSnapshot = buildFinancialSnapshotData(fundamentalData)
+  const shareholding = buildShareholdingDistribution(fundamentalData?.shareholdingPattern)
+  const shareSecondBreak = shareholding.institutional + shareholding.retail
+  const shareRingBackground = `conic-gradient(#0c4ab8 0 ${shareholding.institutional.toFixed(2)}%, #afc1ff ${shareholding.institutional.toFixed(2)}% ${shareSecondBreak.toFixed(2)}%, #d8dfee ${shareSecondBreak.toFixed(2)}% 100%)`
+  const ownershipBreakdown: Array<{ label: 'Institutional' | 'Retail' | 'Promoter'; value: number }> = [
+    { label: 'Institutional', value: shareholding.institutional },
+    { label: 'Retail', value: shareholding.retail },
+    { label: 'Promoter', value: shareholding.promoter },
+  ]
+  const dominantOwnership = ownershipBreakdown.reduce((top, current) =>
+    current.value > top.value ? current : top,
+  ownershipBreakdown[0])
+  const concentrationPercent = shareholding.institutional + shareholding.promoter
+  const concentrationLabel = concentrationPercent >= 80
+    ? 'High Concentration'
+    : concentrationPercent >= 60
+      ? 'Moderate Concentration'
+      : 'Broadly Distributed'
+  const analystCoverageCount = fundamentalData?.numberOfAnalystOpinions
+  const analystCoverageLabel = isFiniteNumber(analystCoverageCount)
+    ? `${Math.round(analystCoverageCount)} Analysts`
+    : 'N/A'
+  const ownershipSignal = concentrationPercent >= 80
+    ? 'Ownership is concentrated; large holder activity can increase short-term volatility.'
+    : concentrationPercent >= 60
+      ? 'Ownership is fairly stable with institutional and promoter support.'
+      : 'Ownership is diversified, which can improve liquidity and reduce concentration risk.'
+  const reportSourceLabel = analysis.reportSource
+    ? analysis.reportSource.toUpperCase()
+    : null
+
+  const handleDownloadPdf = () => {
+    if (!isAuthenticated) {
+      window.alert('Login first to download the PDF report.')
+      return
+    }
+
+    const printWindow = window.open('', '_blank', 'width=1000,height=780')
+    if (!printWindow) {
+      window.alert('Please allow pop-ups so the report can open for PDF download.')
+      return
+    }
+    try {
+      printWindow.opener = null
+    } catch {
+      // Ignore if the browser disallows overriding opener.
+    }
+
+    const reportMarkup = reportPrintRef.current?.outerHTML
+    if (!reportMarkup) {
+      printWindow.close()
+      window.alert('Report layout is not ready yet. Please try again.')
+      return
+    }
+
+    const printableReportHtml = buildPrintableReportHtml({
+      reportMarkup,
+      title: `${companyName} (${analysis.ticker}) Report`,
+    })
+
+    let hasPrinted = false
+    const triggerPrint = () => {
+      if (hasPrinted || printWindow.closed) return
+      hasPrinted = true
+      printWindow.focus()
+      printWindow.print()
+    }
+
+    printWindow.document.open()
+    printWindow.document.write(printableReportHtml)
+    printWindow.document.close()
+    printWindow.onload = triggerPrint
+
+    // Fallback for browsers where onload can fire before the handler is attached.
+    window.setTimeout(triggerPrint, 350)
   }
 
   return (
-    <article className="panel reveal">
-      <header className="panel-head">
-        <h2>FULL REPORT</h2>
-      </header>
-      <div className="full-report-markdown">
-        <MarkdownContent text={reportText} />
+    <article ref={reportPrintRef} className="full-report-dashboard reveal">
+      <nav className="full-report-breadcrumbs" aria-label="Report breadcrumb">
+        <span>{sectorLabel}</span>
+        <span className="separator">/</span>
+        <span>{industryLabel}</span>
+        <span className="separator">/</span>
+        <span className="active">{companyName}</span>
+      </nav>
+
+      <section className="full-report-hero">
+        <div className="full-report-hero-left">
+          <div className="full-report-title-row">
+            <h2>{companyName} ({analysis.ticker})</h2>
+            <span className="full-report-exchange-tag">{inferExchangeLabel(analysis.ticker)}</span>
+          </div>
+          <div className="full-report-price-strip">
+            <div className="full-report-price-block">
+              <span className="full-report-price">{formatCurrency(latestPrice, displayCurrency)}</span>
+              {isFiniteNumber(priceChange) && isFiniteNumber(priceChangePercent) ? (
+                <span className={`full-report-price-change ${priceToneClass}`}>
+                  {formatSignedNumber(Number(priceChange.toFixed(2)))} {' '}
+                  {formatSignedPercent(priceChangePercent)}
+                </span>
+              ) : (
+                <span className="full-report-price-change neutral">Price change unavailable</span>
+              )}
+            </div>
+            <div className="full-report-hero-metric">
+              <span>Market Cap</span>
+              <strong>{marketCapLabel}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="full-report-hero-right">
+          <div className="full-report-hero-actions">
+            <button type="button" className="full-report-download-btn" onClick={handleDownloadPdf}>
+              {isAuthenticated ? 'Download PDF' : 'Login To Download'}
+            </button>
+          </div>
+          <div className="full-report-consensus-box">
+            <div>
+              <span className="label">Analyst Consensus</span>
+              <span className={`full-report-consensus-chip tone-${consensusTone}`}>
+                {consensusLabel}
+              </span>
+            </div>
+            <div>
+              <span className="label">Target Price</span>
+              <strong>{targetPriceLabel}</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="full-report-main-grid">
+        <div className="full-report-main-col">
+          <article className="full-report-card full-report-executive-card">
+            <h3>
+              <span className="accent-line" aria-hidden="true" />
+              Executive Briefing
+            </h3>
+            <div className="full-report-executive-content">
+              <p>{executiveBriefing}</p>
+            </div>
+          </article>
+
+          <div className="full-report-mid-grid">
+            <article className="full-report-card full-report-revenue-card">
+              <h4>Revenue &amp; Profit Trend (USD Bn)</h4>
+              <div className="full-report-revenue-bars" aria-hidden="true">
+                {revenueRows.map((row, index) => (
+                  <div key={`${row.label}-${index}`} className="full-report-revenue-col">
+                    <div className="full-report-revenue-tooltip" role="presentation">
+                      <p>{row.label}</p>
+                      <span>Revenue: {formatCurrency(row.revenueValue, displayCurrency)}</span>
+                      <span>Net Profit: {formatCurrency(row.profitValue, displayCurrency)}</span>
+                    </div>
+                    <div className="full-report-revenue-track">
+                      <div className="full-report-revenue-bar-group">
+                        <div
+                          className="full-report-revenue-bar"
+                          style={{ height: `${row.revenueHeight}%` }}
+                        />
+                        <div
+                          className="full-report-profit-bar"
+                          style={{ height: `${row.profitHeight}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span>{row.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="full-report-revenue-legend">
+                <span>
+                  <i className="revenue" aria-hidden="true" />
+                  Revenue
+                </span>
+                <span>
+                  <i className="profit" aria-hidden="true" />
+                  Net Profit
+                </span>
+              </div>
+            </article>
+
+            <article className="full-report-card full-report-metrics-card">
+              <h4>Key Performance Metrics</h4>
+              <ul>
+                {performanceMetrics.map((metric) => (
+                  <li key={metric.label}>
+                    <span>{metric.label}</span>
+                    <strong className={metric.highlight ? 'is-highlight' : undefined}>
+                      {metric.value}
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          </div>
+
+          <article className="full-report-card full-report-table-card">
+            <h3>Financial Snapshot</h3>
+            <div className="full-report-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Metric (USD Mn)</th>
+                    {financialSnapshot.years.map((year) => (
+                      <th key={year}>{year}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {financialSnapshot.rows.map((row) => (
+                    <tr key={row.label}>
+                      <th scope="row">{row.label}</th>
+                      {row.values.map((value, index) => (
+                        <td
+                          key={`${row.label}-${financialSnapshot.years[index]}`}
+                          className={
+                            index === row.values.length - 1 ? 'is-highlight' : undefined
+                          }
+                        >
+                          {formatTableMetric(value)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <aside className="full-report-side-col">
+          <article className="full-report-card full-report-share-card">
+            <h4>Shareholding Pattern</h4>
+            <div className="full-report-share-ring" style={{ background: shareRingBackground }}>
+              <div className="full-report-share-center">
+                <strong>{wholeNumberFormatter.format(Math.round(shareholding.institutional))}%</strong>
+                <span>Institutional</span>
+              </div>
+            </div>
+            <ul className="full-report-share-list">
+              <li>
+                <span><i className="institutional" aria-hidden="true" />Institutional</span>
+                <strong>{shareholding.institutional.toFixed(1)}%</strong>
+              </li>
+              <li>
+                <span><i className="retail" aria-hidden="true" />Retail</span>
+                <strong>{shareholding.retail.toFixed(1)}%</strong>
+              </li>
+              <li>
+                <span><i className="promoter" aria-hidden="true" />Promoter</span>
+                <strong>{shareholding.promoter.toFixed(1)}%</strong>
+              </li>
+            </ul>
+          </article>
+
+          <article className="full-report-card full-report-ownership-card">
+            <h4>Ownership Insights</h4>
+            <ul className="full-report-ownership-list">
+              <li>
+                <span>Dominant Holder</span>
+                <strong>{dominantOwnership.label} ({dominantOwnership.value.toFixed(1)}%)</strong>
+              </li>
+              <li>
+                <span>Concentration</span>
+                <strong>{concentrationLabel}</strong>
+              </li>
+              <li>
+                <span>Locked Ownership</span>
+                <strong>{concentrationPercent.toFixed(1)}%</strong>
+              </li>
+              <li>
+                <span>Analyst Coverage</span>
+                <strong>{analystCoverageLabel}</strong>
+              </li>
+            </ul>
+            <p className="full-report-ownership-note">{ownershipSignal}</p>
+          </article>
+
+          <article className="full-report-card full-report-risk-card">
+            <h4>Risk Factors</h4>
+            <ul>
+              {riskItems.map((item, index) => (
+                <li key={`risk-${index}`}>{item}</li>
+              ))}
+            </ul>
+          </article>
+        </aside>
       </div>
+
+      <section className="full-report-detailed-grid">
+        <article className="full-report-card full-report-summary-card">
+          <h4>Fundamental Summary</h4>
+          <ul>
+            {fundamentalSummaryPoints.map((item, index) => (
+              <li key={`fundamental-summary-${index}`}>{item}</li>
+            ))}
+          </ul>
+          <p>{fundamentalNarrative}</p>
+        </article>
+
+        <article className="full-report-card full-report-summary-card">
+          <h4>Technical Summary</h4>
+          <div className="full-report-tech-meter-row">
+            <div className="full-report-tech-meter" aria-hidden="true">
+              <span style={{ width: `${technicalScorePercent.toFixed(1)}%` }} />
+            </div>
+            <span className={`full-report-tech-label tone-${technicalSignalTone}`}>
+              {technicalSignalLabel}
+            </span>
+          </div>
+          <p>{technicalSubtext}</p>
+          <ul>
+            {technicalSummaryPoints.map((item, index) => (
+              <li key={`technical-summary-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </article>
+
+        <article className="full-report-card full-report-summary-card">
+          <h4>Sentiment Summary</h4>
+          {sentimentSummaryPoints.length > 0 && (
+            <ul>
+              {sentimentSummaryPoints.map((item, index) => (
+                <li key={`sentiment-summary-${index}`}>{item}</li>
+              ))}
+            </ul>
+          )}
+          <p>{sentimentSummaryText}</p>
+        </article>
+      </section>
+
+      {reportSourceLabel && (
+        <p className="full-report-source-note">Report source: {reportSourceLabel}</p>
+      )}
     </article>
   )
+}
+
+type RevenueBarRow = {
+  label: string
+  revenueHeight: number
+  profitHeight: number
+  revenueValue: number | null
+  profitValue: number | null
+}
+
+type FinancialSnapshotData = {
+  years: string[]
+  rows: Array<{ label: string; values: Array<number | null> }>
+}
+
+type ShareholdingDistribution = {
+  institutional: number
+  retail: number
+  promoter: number
+}
+
+function sanitizeReportText(raw: string | null | undefined): string {
+  if (!raw) {
+    return ''
+  }
+  return raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function summarizeForCard(
+  raw: string | null | undefined,
+  fallback: string,
+  _maxLength: number,
+): string {
+  const cleaned = sanitizeReportText(raw)
+  if (!cleaned) {
+    return fallback
+  }
+  return cleaned
+}
+
+function pickPrimaryInsight(
+  raw: string | null | undefined,
+  fallback: string,
+  _maxLength: number,
+): string {
+  const bullets = raw
+    ? extractBulletPoints(raw)
+        .map((item) => sanitizeReportText(item))
+        .filter(Boolean)
+    : []
+  if (bullets.length > 0) {
+    return bullets.slice(0, 3).join(' ')
+  }
+
+  const cleaned = sanitizeReportText(raw)
+  if (cleaned) {
+    return cleaned
+  }
+  return fallback
+}
+
+function buildRiskItems(raw: string | null | undefined): string[] {
+  const bulletItems = raw
+    ? extractBulletPoints(raw)
+        .map((item) => sanitizeReportText(item))
+        .filter(Boolean)
+        .slice(0, 3)
+    : []
+  if (bulletItems.length > 0) {
+    return bulletItems
+  }
+
+  const cleaned = sanitizeReportText(raw)
+  if (cleaned) {
+    const sentences = cleaned
+      .split(/(?<=[.!?])\s+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 3)
+    if (sentences.length > 0) {
+      return sentences
+    }
+    return [cleaned]
+  }
+
+  return [
+    'Supply-chain concentration can amplify cost and delivery shocks.',
+    'Regulatory and legal developments may pressure valuation multiples.',
+    'Execution risk increases when demand slows in core segments.',
+  ]
+}
+
+function buildTechnicalSubtext(input: {
+  rsi: number | null
+  sma200: number | null
+  currentPrice: number | null
+  currency: string
+  fallback: string
+}): string {
+  const parts: string[] = []
+  if (isFiniteNumber(input.rsi)) {
+    if (input.rsi >= 70) {
+      parts.push(`RSI at ${input.rsi.toFixed(0)} points to overbought momentum.`)
+    } else if (input.rsi <= 30) {
+      parts.push(`RSI at ${input.rsi.toFixed(0)} signals oversold conditions.`)
+    } else {
+      parts.push(`RSI at ${input.rsi.toFixed(0)} indicates balanced momentum.`)
+    }
+  }
+  if (isFiniteNumber(input.sma200) && isFiniteNumber(input.currentPrice)) {
+    const position = input.currentPrice >= input.sma200 ? 'above' : 'below'
+    parts.push(
+      `Trading ${position} 200-day DMA (${formatCurrency(input.sma200, input.currency)}).`,
+    )
+  }
+  if (parts.length > 0) {
+    return parts.join(' ')
+  }
+  return summarizeForCard(
+    input.fallback,
+    'Technical context is currently unavailable.',
+    195,
+  )
+}
+
+function buildRevenueTrendRows(
+  trend: FundamentalData['revenueTrend'] | undefined,
+): RevenueBarRow[] {
+  const fallback: RevenueBarRow[] = [
+    { label: '2021', revenueHeight: 42, profitHeight: 12, revenueValue: null, profitValue: null },
+    { label: '2022', revenueHeight: 58, profitHeight: 15, revenueValue: null, profitValue: null },
+    { label: '2023', revenueHeight: 74, profitHeight: 18, revenueValue: null, profitValue: null },
+    { label: '2024E', revenueHeight: 90, profitHeight: 23, revenueValue: null, profitValue: null },
+  ]
+  if (!trend || trend.length === 0) {
+    return fallback
+  }
+
+  const recent = trend.slice(-4)
+
+  const maxScale = recent.reduce((max, row) => {
+    const revenue = isFiniteNumber(row.revenue) && row.revenue > 0 ? row.revenue : 0
+    const profit = isFiniteNumber(row.netProfit) && row.netProfit > 0 ? row.netProfit : 0
+    return Math.max(max, revenue, profit)
+  }, 0)
+  if (maxScale <= 0) {
+    return fallback
+  }
+
+  const scaledHeight = (value: number | null | undefined, minVisibleHeight: number) => {
+    if (!isFiniteNumber(value) || value <= 0) {
+      return 0
+    }
+    return Math.max(minVisibleHeight, Math.min(100, (value / maxScale) * 100))
+  }
+
+  return recent.map((row, index) => {
+    const revenueHeight = scaledHeight(row.revenue, 18)
+    const profitHeight = scaledHeight(row.netProfit, 10)
+    return {
+      label: index === recent.length - 1 ? `${row.year}E` : `${row.year}`,
+      revenueHeight,
+      profitHeight,
+      revenueValue: isFiniteNumber(row.revenue) ? row.revenue : null,
+      profitValue: isFiniteNumber(row.netProfit) ? row.netProfit : null,
+    }
+  })
+}
+
+function buildFinancialSnapshotData(
+  data: FundamentalData | null | undefined,
+): FinancialSnapshotData {
+  const revenueTrend = (data?.revenueTrend ?? []).slice(-3)
+  if (revenueTrend.length === 0) {
+    return {
+      years: ['FY 2022', 'FY 2023', 'FY 2024 (E)'],
+      rows: [
+        { label: 'Total Revenue', values: [null, null, null] },
+        { label: 'Operating Income', values: [null, null, null] },
+        { label: 'Net Income', values: [null, null, null] },
+        { label: 'Cash & Equivalents', values: [null, null, null] },
+      ],
+    }
+  }
+
+  const marginsByYear = new Map((data?.marginsTrend ?? []).map((row) => [row.year, row]))
+  const cashflowByYear = new Map((data?.cashflowTrend ?? []).map((row) => [row.year, row]))
+  const years = revenueTrend.map((row, index) =>
+    index === revenueTrend.length - 1 ? `FY ${row.year} (E)` : `FY ${row.year}`,
+  )
+
+  const operatingIncome = revenueTrend.map((row) => {
+    const margin = marginsByYear.get(row.year)?.operatingMargin
+    if (isFiniteNumber(row.revenue) && isFiniteNumber(margin)) {
+      return row.revenue * margin
+    }
+    return null
+  })
+  const netIncome = revenueTrend.map((row) =>
+    isFiniteNumber(row.netProfit) ? row.netProfit : null,
+  )
+  const cashAndEquivalents = revenueTrend.map((row, index) => {
+    if (index === revenueTrend.length - 1 && isFiniteNumber(data?.totalCash)) {
+      return data?.totalCash ?? null
+    }
+    const freeCashFlow = cashflowByYear.get(row.year)?.freeCashFlow
+    return isFiniteNumber(freeCashFlow) ? freeCashFlow : null
+  })
+
+  return {
+    years,
+    rows: [
+      { label: 'Total Revenue', values: revenueTrend.map((row) => row.revenue ?? null) },
+      { label: 'Operating Income', values: operatingIncome },
+      { label: 'Net Income', values: netIncome },
+      { label: 'Cash & Equivalents', values: cashAndEquivalents },
+    ],
+  }
+}
+
+function normalizeSharePercent(value: number | null | undefined): number {
+  if (!isFiniteNumber(value)) {
+    return 0
+  }
+  if (value <= 1) {
+    return value * 100
+  }
+  return value
+}
+
+function buildShareholdingDistribution(
+  pattern: FundamentalData['shareholdingPattern'] | undefined,
+): ShareholdingDistribution {
+  const institutional = normalizeSharePercent(pattern?.institutions)
+  const retail = normalizeSharePercent(pattern?.public)
+  const promoter = normalizeSharePercent(pattern?.promoters)
+  const total = institutional + retail + promoter
+  if (total <= 0) {
+    return { institutional: 60.2, retail: 25.4, promoter: 14.4 }
+  }
+  return {
+    institutional: (institutional / total) * 100,
+    retail: (retail / total) * 100,
+    promoter: (promoter / total) * 100,
+  }
+}
+
+function formatCompactMoney(
+  value: number | null | undefined,
+  currency: string,
+): string {
+  if (!isFiniteNumber(value)) {
+    return 'N/A'
+  }
+  const normalizedCurrency = normalizeCurrencyCode(currency)
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: normalizedCurrency,
+      notation: 'compact',
+      maximumFractionDigits: 2,
+    }).format(value)
+  } catch {
+    return `${compactFormatter.format(value)} ${normalizedCurrency}`
+  }
+}
+
+function formatTableMetric(value: number | null | undefined): string {
+  if (!isFiniteNumber(value)) {
+    return 'N/A'
+  }
+  return wholeNumberFormatter.format(Math.round(value))
+}
+
+function inferExchangeLabel(ticker: string): string {
+  const normalized = ticker.trim().toUpperCase()
+  if (normalized.endsWith('.NS')) {
+    return 'NSE'
+  }
+  if (normalized.endsWith('.BO')) {
+    return 'BSE'
+  }
+  if (normalized.endsWith('.L')) {
+    return 'LSE'
+  }
+  if (normalized.endsWith('.TO')) {
+    return 'TSX'
+  }
+  return 'NASDAQ'
+}
+
+function formatSignedPercent(value: number): string {
+  const prefix = value > 0 ? '+' : ''
+  return `${prefix}${value.toFixed(2)}%`
+}
+
+function buildSectionSummaryPoints(
+  raw: string | null | undefined,
+  fallback: string,
+): string[] {
+  const fromBullets = raw
+    ? extractBulletPoints(raw)
+        .map((item) => sanitizeReportText(item))
+        .filter(Boolean)
+    : []
+  if (fromBullets.length > 0) {
+    return fromBullets.slice(0, 6)
+  }
+
+  const cleaned = sanitizeReportText(raw)
+  if (cleaned) {
+    const sentences = cleaned
+      .split(/(?<=[.!?])\s+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 6)
+    if (sentences.length > 0) {
+      return sentences
+    }
+  }
+
+  return [sanitizeReportText(fallback) || fallback]
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+type PrintableReportInput = {
+  reportMarkup: string
+  title: string
+}
+
+function buildPrintableReportHtml(input: PrintableReportInput): string {
+  const pageStyles = Array.from(
+    document.querySelectorAll<HTMLStyleElement | HTMLLinkElement>('style, link[rel="stylesheet"]'),
+  )
+    .map((node) => node.outerHTML)
+    .join('\n')
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(input.title)}</title>
+    ${pageStyles}
+    <style>
+      :root { color-scheme: light; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+      }
+      body {
+        padding: 16px;
+      }
+      .full-report-print-root {
+        max-width: 1160px;
+        margin: 0 auto;
+      }
+      .full-report-print-root .reveal {
+        animation: none !important;
+      }
+      .full-report-print-root .full-report-hero-actions,
+      .full-report-print-root .full-report-download-btn {
+        display: none !important;
+      }
+      .full-report-print-root .full-report-dashboard {
+        box-shadow: none !important;
+      }
+      .full-report-print-root .full-report-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      @page {
+        size: A4;
+        margin: 12mm;
+      }
+      @media print {
+        body {
+          padding: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .full-report-print-root {
+          max-width: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="full-report-print-root">
+      ${input.reportMarkup}
+    </main>
+  </body>
+</html>`
 }
 
 function emphasizeSummaryLabel(text: string): string {
@@ -2942,231 +3799,12 @@ function normalizeInlineBulletLists(text: string): string {
   return text.replace(/\. (?=-\s+\S)/g, '.\n')
 }
 
-function MarkdownContent({ text }: { text: string }) {
-  const lines = text.replace(/\r\n/g, '\n').split('\n')
-  const blocks: ReactElement[] = []
-  let i = 0
-  let key = 0
-
-  while (i < lines.length) {
-    const line = lines[i]
-
-    if (!line.trim()) {
-      i += 1
-      continue
-    }
-
-    if (line.startsWith('```')) {
-      const language = line.slice(3).trim()
-      i += 1
-      const codeLines: string[] = []
-      while (i < lines.length && !lines[i].startsWith('```')) {
-        codeLines.push(lines[i])
-        i += 1
-      }
-      if (i < lines.length && lines[i].startsWith('```')) {
-        i += 1
-      }
-      blocks.push(
-        <pre key={`md-${key++}`}>
-          <code className={language ? `language-${language}` : undefined}>
-            {codeLines.join('\n')}
-          </code>
-        </pre>,
-      )
-      continue
-    }
-
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
-    if (headingMatch) {
-      const level = headingMatch[1].length
-      const content = renderMarkdownInline(headingMatch[2], `md-${key}-h`)
-      const headingKey = `md-${key++}`
-      if (level === 1) {
-        blocks.push(<h1 key={headingKey}>{content}</h1>)
-      } else if (level === 2) {
-        blocks.push(<h2 key={headingKey}>{content}</h2>)
-      } else if (level === 3) {
-        blocks.push(<h3 key={headingKey}>{content}</h3>)
-      } else if (level === 4) {
-        blocks.push(<h4 key={headingKey}>{content}</h4>)
-      } else if (level === 5) {
-        blocks.push(<h5 key={headingKey}>{content}</h5>)
-      } else {
-        blocks.push(<h6 key={headingKey}>{content}</h6>)
-      }
-      i += 1
-      continue
-    }
-
-    if (/^>\s?/.test(line)) {
-      const quoteLines: string[] = []
-      while (i < lines.length && /^>\s?/.test(lines[i])) {
-        quoteLines.push(lines[i].replace(/^>\s?/, ''))
-        i += 1
-      }
-      blocks.push(
-        <blockquote key={`md-${key++}`}>
-          <MarkdownParagraphs lines={quoteLines} blockKeyPrefix={`md-${key}-q`} />
-        </blockquote>,
-      )
-      continue
-    }
-
-    if (/^[-*+]\s+/.test(line)) {
-      const items: ReactElement[] = []
-      while (i < lines.length && /^[-*+]\s+/.test(lines[i])) {
-        const item = lines[i].replace(/^[-*+]\s+/, '')
-        items.push(
-          <li key={`md-${key}-ul-${items.length}`}>
-            {renderMarkdownInline(item, `md-${key}-ul-inline-${items.length}`)}
-          </li>,
-        )
-        i += 1
-      }
-      blocks.push(<ul key={`md-${key++}`}>{items}</ul>)
-      continue
-    }
-
-    if (/^\d+\.\s+/.test(line)) {
-      const items: ReactElement[] = []
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
-        const item = lines[i].replace(/^\d+\.\s+/, '')
-        items.push(
-          <li key={`md-${key}-ol-${items.length}`}>
-            {renderMarkdownInline(item, `md-${key}-ol-inline-${items.length}`)}
-          </li>,
-        )
-        i += 1
-      }
-      blocks.push(<ol key={`md-${key++}`}>{items}</ol>)
-      continue
-    }
-
-    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
-      blocks.push(<hr key={`md-${key++}`} />)
-      i += 1
-      continue
-    }
-
-    const paragraphLines: string[] = []
-    while (
-      i < lines.length &&
-      lines[i].trim() &&
-      !lines[i].startsWith('```') &&
-      !/^(#{1,6})\s+/.test(lines[i]) &&
-      !/^>\s?/.test(lines[i]) &&
-      !/^[-*+]\s+/.test(lines[i]) &&
-      !/^\d+\.\s+/.test(lines[i]) &&
-      !/^(-{3,}|\*{3,}|_{3,})$/.test(lines[i].trim())
-    ) {
-      paragraphLines.push(lines[i])
-      i += 1
-    }
-    blocks.push(
-      <p key={`md-${key++}`}>
-        {renderMarkdownInline(paragraphLines.join(' '), `md-${key}-p`)}
-      </p>,
-    )
-  }
-
-  return <>{blocks}</>
-}
-
-function MarkdownParagraphs({
-  lines,
-  blockKeyPrefix,
-}: {
-  lines: string[]
-  blockKeyPrefix: string
-}) {
-  const parts = lines.join('\n').split(/\n\s*\n/g).filter((item) => item.trim())
-  return (
-    <>
-      {parts.map((part, index) => (
-        <p key={`${blockKeyPrefix}-${index}`}>
-          {renderMarkdownInline(part.replace(/\n/g, ' '), `${blockKeyPrefix}-inline-${index}`)}
-        </p>
-      ))}
-    </>
-  )
-}
-
-function renderMarkdownInline(text: string, keyPrefix: string) {
-  const pattern =
-    /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\[[^\]]+\]\((https?:\/\/[^\s)]+)\))/g
-  const nodes: Array<string | ReactElement> = []
-  let lastIndex = 0
-  let match = pattern.exec(text)
-  let tokenIndex = 0
-
-  while (match) {
-    const [token] = match
-    const index = match.index
-    if (index > lastIndex) {
-      nodes.push(text.slice(lastIndex, index))
-    }
-
-    if (token.startsWith('`') && token.endsWith('`')) {
-      nodes.push(
-        <code key={`${keyPrefix}-code-${tokenIndex++}`}>
-          {token.slice(1, token.length - 1)}
-        </code>,
-      )
-    } else if (
-      (token.startsWith('**') && token.endsWith('**')) ||
-      (token.startsWith('__') && token.endsWith('__'))
-    ) {
-      nodes.push(
-        <strong key={`${keyPrefix}-strong-${tokenIndex++}`}>
-          {token.slice(2, token.length - 2)}
-        </strong>,
-      )
-    } else if (
-      (token.startsWith('*') && token.endsWith('*')) ||
-      (token.startsWith('_') && token.endsWith('_'))
-    ) {
-      nodes.push(
-        <em key={`${keyPrefix}-em-${tokenIndex++}`}>
-          {token.slice(1, token.length - 1)}
-        </em>,
-      )
-    } else if (token.startsWith('[')) {
-      const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
-      if (linkMatch) {
-        nodes.push(
-          <a
-            key={`${keyPrefix}-link-${tokenIndex++}`}
-            href={linkMatch[2]}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {linkMatch[1]}
-          </a>,
-        )
-      } else {
-        nodes.push(token)
-      }
-    } else {
-      nodes.push(token)
-    }
-
-    lastIndex = index + token.length
-    match = pattern.exec(text)
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex))
-  }
-
-  return nodes
-}
-
 function renderSection(
   tab: AnalysisTab,
   analysis: AnalysisResponse,
   ticker: string,
   isGeneratingReport: boolean = false,
+  isAuthenticated: boolean = false,
 ) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
   const displayCurrency = resolveAnalysisCurrency(analysis)
@@ -3212,7 +3850,13 @@ function renderSection(
       // Show full report section, but if generating, maybe we can wait or show a placeholder in FullReportSection 
       // FullReportSection receives analysis which already has report as undefined, so it might say unavailable. 
       // We will handle FullReportSection below if needed.
-      return <FullReportSection analysis={analysis} isGeneratingReport={isGeneratingReport} />
+      return (
+        <FullReportSection
+          analysis={analysis}
+          isGeneratingReport={isGeneratingReport}
+          isAuthenticated={isAuthenticated}
+        />
+      )
     case 'overview':
     default:
       return (
