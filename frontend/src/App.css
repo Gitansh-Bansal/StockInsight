@@ -839,37 +839,6 @@
   justify-items: end;
 }
 
-.full-report-hero-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 0;
-  position: absolute;
-  top: 0.7rem;
-  right: 0.8rem;
-  z-index: 3;
-}
-
-.full-report-download-btn {
-  appearance: none;
-  border: 1px solid #d2deef;
-  border-radius: 999px;
-  padding: 0.34rem 0.86rem;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #1e40af;
-  background: #ffffff;
-  cursor: pointer;
-  white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
-}
-
-.full-report-download-btn:hover {
-  border-color: #93c5fd;
-  background: #eff6ff;
-}
-
 .full-report-consensus-box {
   display: grid;
   grid-template-columns: repeat(2, minmax(115px, 1fr));
@@ -1381,45 +1350,29 @@
   line-height: 1.48;
 }
 
-.full-report-tech-meter-row {
+.full-report-score-row.technical-score-meter-wrap {
   margin-top: 0.55rem;
   display: flex;
   align-items: center;
   gap: 0.55rem;
+  padding: 0;
 }
 
-.full-report-tech-meter {
+.full-report-score-row .technical-score-meter-visual {
   flex: 1;
-  height: 0.45rem;
-  border-radius: 999px;
-  background: #dbeafe;
-  overflow: hidden;
+  min-width: 0;
 }
 
-.full-report-tech-meter span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #10b981 0%, #047857 100%);
-}
-
-.full-report-tech-label {
-  font-size: 0.56rem;
+.full-report-score-value {
+  margin: 0;
+  color: var(--score-tone);
+  font-size: 0.88rem;
   font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.full-report-tech-label.tone-bullish {
-  color: #047857;
-}
-
-.full-report-tech-label.tone-neutral {
-  color: #b45309;
-}
-
-.full-report-tech-label.tone-bearish {
-  color: #b91c1c;
+  line-height: 1;
+  font-family: var(--mono-font);
+  white-space: nowrap;
+  align-self: flex-start;
+  margin-top: 1px;
 }
 
 .full-report-risk-card {
@@ -1520,6 +1473,34 @@
   font-weight: 800;
 }
 
+.full-report-summary-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.full-report-summary-indicator {
+  margin: 0;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.full-report-summary-indicator.tone-bullish {
+  color: #047857;
+}
+
+.full-report-summary-indicator.tone-neutral {
+  color: #b45309;
+}
+
+.full-report-summary-indicator.tone-bearish {
+  color: #b91c1c;
+}
+
 .full-report-summary-card ul {
   margin: 0.65rem 0 0;
   padding-left: 1rem;
@@ -1572,16 +1553,6 @@
   flex: 1 1 220px;
 }
 
-.full-report-download-card .full-report-cta-content {
-  align-content: center;
-}
-
-.full-report-download-note {
-  margin: 0;
-  color: rgba(241, 245, 249, 0.96);
-  font-size: 0.7rem;
-}
-
 @keyframes full-report-cta-glow {
   0%, 100% {
     transform: translate3d(0, 0, 0) scale(1);
@@ -1619,11 +1590,6 @@
 
   .full-report-hero-right {
     width: 100%;
-  }
-
-  .full-report-hero-actions {
-    position: static;
-    margin-bottom: 0.45rem;
   }
 
   .full-report-detailed-grid {

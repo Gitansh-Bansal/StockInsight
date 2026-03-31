@@ -175,7 +175,6 @@ function App() {
             key={route.ticker}
             ticker={route.ticker}
             tab={route.tab}
-            isAuthenticated={authStatus === 'authenticated'}
             onTabChange={(tab) =>
               navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`, {
                 replace: true,
@@ -756,11 +755,10 @@ function AuthPage({
 type AnalysisPageProps = {
   ticker: string
   tab: AnalysisTab
-  isAuthenticated: boolean
   onTabChange: (tab: AnalysisTab) => void
 }
 
-function AnalysisPage({ ticker, tab, isAuthenticated, onTabChange }: AnalysisPageProps) {
+function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -913,7 +911,7 @@ function AnalysisPage({ ticker, tab, isAuthenticated, onTabChange }: AnalysisPag
         </div>
       )}
 
-      {!isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport, isAuthenticated)}
+      {!isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport)}
     </section>
   )
 }
@@ -2903,13 +2901,10 @@ function IndicatorMiniTooltip({
 function FullReportSection({
   analysis,
   isGeneratingReport,
-  isAuthenticated,
 }: {
   analysis: AnalysisResponse
   isGeneratingReport?: boolean
-  isAuthenticated: boolean
 }) {
-  const reportPrintRef = useRef<HTMLElement | null>(null)
   const reportText = normalizeInlineBulletLists(
     emphasizeSummaryLabel(analysis.report?.trim() ?? ''),
   )
@@ -2991,11 +2986,6 @@ function FullReportSection({
     technicalNarrative,
   )
   const sentimentParsed = parseSentimentSummary(sections.sentiment ?? '')
-  const sentimentSummaryPoints =
-    sentimentParsed.insights
-      .map((item) => sanitizeReportText(item))
-      .filter(Boolean)
-      .slice(0, 4)
   const sentimentSummaryText = summarizeForCard(
     sentimentParsed.summary || sections.sentiment,
     isGeneratingReport
@@ -3003,22 +2993,53 @@ function FullReportSection({
       : 'Sentiment summary is currently unavailable.',
     310,
   )
+  const sentimentSummaryPoints = buildSectionSummaryPoints(
+    sentimentSummaryText,
+    sentimentSummaryText,
+  )
   const riskItems = buildRiskItems(sections.riskFactors ?? sections.conclusion)
 
-  const rsiValue = technicalData?.rsi ?? technicalResult?.indicators?.RSI ?? null
-  const sma200 = technicalResult?.indicators?.SMA200 ?? null
-  const technicalSubtext = buildTechnicalSubtext({
-    rsi: rsiValue,
-    sma200,
-    currentPrice: latestPrice,
-    currency: displayCurrency,
-    fallback: technicalNarrative,
-  })
-  const technicalScorePercent = isFiniteNumber(analysis.overview.technicalScore)
-    ? clampPercent(analysis.overview.technicalScore)
+  const technicalScoreValue = isFiniteNumber(technicalResult?.score)
+    ? technicalResult.score
+    : isFiniteNumber(analysis.overview.technicalScore)
+      ? analysis.overview.technicalScore
+      : null
+  const technicalScorePercent = isFiniteNumber(technicalScoreValue)
+    ? clampPercent(technicalScoreValue)
     : toneToPercent(resolveTrendBias(technicalResult?.trend, technicalResult?.signal))
-  const technicalSignalLabel = scoreBand(analysis.overview.technicalScore).toUpperCase()
-  const technicalSignalTone = scoreToTone(analysis.overview.technicalScore)
+  const technicalScoreZone = resolveScoreZone(technicalScoreValue)
+  const technicalSignalLabel =
+    technicalResult?.signal === 'Strong Bullish'
+      ? 'Strongly Bullish'
+      : technicalResult?.signal === 'Strong Bearish'
+        ? 'Strongly Bearish'
+        : safeText(technicalResult?.signal)
+  const technicalIndicatorTone = scoreToTone(technicalScoreValue)
+  const technicalScoreLabel = formatScore(technicalScoreValue)
+  const fundamentalScoreValue = isFiniteNumber(analysis.fundamental?.score)
+    ? analysis.fundamental.score
+    : isFiniteNumber(analysis.overview.fundamentalScore)
+      ? analysis.overview.fundamentalScore
+      : null
+  const fundamentalScorePercent = isFiniteNumber(fundamentalScoreValue)
+    ? clampPercent(fundamentalScoreValue)
+    : 50
+  const fundamentalScoreZone = resolveScoreZone(fundamentalScoreValue)
+  const fundamentalSignalLabel = resolveFundamentalSignalLabel(fundamentalScoreValue)
+  const fundamentalIndicatorTone = scoreToTone(fundamentalScoreValue)
+  const fundamentalScoreLabel = formatScore(fundamentalScoreValue)
+  const sentimentScoreValue = isFiniteNumber(analysis.sentiment?.score)
+    ? analysis.sentiment.score
+    : isFiniteNumber(analysis.overview.sentimentScore)
+      ? analysis.overview.sentimentScore
+      : null
+  const sentimentScorePercent = isFiniteNumber(sentimentScoreValue)
+    ? clampPercent(sentimentScoreValue)
+    : 50
+  const sentimentScoreZone = resolveScoreZone(sentimentScoreValue)
+  const sentimentSignalLabel = resolveSentimentSignalLabel(sentimentScoreValue)
+  const sentimentIndicatorTone = scoreToTone(sentimentScoreValue)
+  const sentimentScoreLabel = formatScore(sentimentScoreValue)
 
   const performanceMetrics = [
     { label: 'P/E Ratio (TTM)', value: formatNumber(fundamentalData?.trailingPE), highlight: false },
@@ -3064,54 +3085,8 @@ function FullReportSection({
     ? analysis.reportSource.toUpperCase()
     : null
 
-  const handleDownloadPdf = () => {
-    if (!isAuthenticated) {
-      window.alert('Login first to download the PDF report.')
-      return
-    }
-
-    const printWindow = window.open('', '_blank', 'width=1000,height=780')
-    if (!printWindow) {
-      window.alert('Please allow pop-ups so the report can open for PDF download.')
-      return
-    }
-    try {
-      printWindow.opener = null
-    } catch {
-      // Ignore if the browser disallows overriding opener.
-    }
-
-    const reportMarkup = reportPrintRef.current?.outerHTML
-    if (!reportMarkup) {
-      printWindow.close()
-      window.alert('Report layout is not ready yet. Please try again.')
-      return
-    }
-
-    const printableReportHtml = buildPrintableReportHtml({
-      reportMarkup,
-      title: `${companyName} (${analysis.ticker}) Report`,
-    })
-
-    let hasPrinted = false
-    const triggerPrint = () => {
-      if (hasPrinted || printWindow.closed) return
-      hasPrinted = true
-      printWindow.focus()
-      printWindow.print()
-    }
-
-    printWindow.document.open()
-    printWindow.document.write(printableReportHtml)
-    printWindow.document.close()
-    printWindow.onload = triggerPrint
-
-    // Fallback for browsers where onload can fire before the handler is attached.
-    window.setTimeout(triggerPrint, 350)
-  }
-
   return (
-    <article ref={reportPrintRef} className="full-report-dashboard reveal">
+    <article className="full-report-dashboard reveal">
       <nav className="full-report-breadcrumbs" aria-label="Report breadcrumb">
         <span>{sectorLabel}</span>
         <span className="separator">/</span>
@@ -3146,11 +3121,6 @@ function FullReportSection({
         </div>
 
         <div className="full-report-hero-right">
-          <div className="full-report-hero-actions">
-            <button type="button" className="full-report-download-btn" onClick={handleDownloadPdf}>
-              {isAuthenticated ? 'Download PDF' : 'Login To Download'}
-            </button>
-          </div>
           <div className="full-report-consensus-box">
             <div>
               <span className="label">Analyst Consensus</span>
@@ -3327,26 +3297,38 @@ function FullReportSection({
 
       <section className="full-report-detailed-grid">
         <article className="full-report-card full-report-summary-card">
-          <h4>Fundamental Summary</h4>
+          <div className="full-report-summary-head">
+            <h4>Fundamental Summary</h4>
+            <span className={`full-report-summary-indicator tone-${fundamentalIndicatorTone}`}>
+              {fundamentalSignalLabel}
+            </span>
+          </div>
+          <FullReportScoreMeter
+            zone={fundamentalScoreZone}
+            percent={fundamentalScorePercent}
+            scoreLabel={fundamentalScoreLabel}
+            tickPrefix="fundamental"
+          />
           <ul>
             {fundamentalSummaryPoints.map((item, index) => (
               <li key={`fundamental-summary-${index}`}>{item}</li>
             ))}
           </ul>
-          <p>{fundamentalNarrative}</p>
         </article>
 
         <article className="full-report-card full-report-summary-card">
-          <h4>Technical Summary</h4>
-          <div className="full-report-tech-meter-row">
-            <div className="full-report-tech-meter" aria-hidden="true">
-              <span style={{ width: `${technicalScorePercent.toFixed(1)}%` }} />
-            </div>
-            <span className={`full-report-tech-label tone-${technicalSignalTone}`}>
+          <div className="full-report-summary-head">
+            <h4>Technical Summary</h4>
+            <span className={`full-report-summary-indicator tone-${technicalIndicatorTone}`}>
               {technicalSignalLabel}
             </span>
           </div>
-          <p>{technicalSubtext}</p>
+          <FullReportScoreMeter
+            zone={technicalScoreZone}
+            percent={technicalScorePercent}
+            scoreLabel={technicalScoreLabel}
+            tickPrefix="technical"
+          />
           <ul>
             {technicalSummaryPoints.map((item, index) => (
               <li key={`technical-summary-${index}`}>{item}</li>
@@ -3355,7 +3337,18 @@ function FullReportSection({
         </article>
 
         <article className="full-report-card full-report-summary-card">
-          <h4>Sentiment Summary</h4>
+          <div className="full-report-summary-head">
+            <h4>Sentiment Summary</h4>
+            <span className={`full-report-summary-indicator tone-${sentimentIndicatorTone}`}>
+              {sentimentSignalLabel}
+            </span>
+          </div>
+          <FullReportScoreMeter
+            zone={sentimentScoreZone}
+            percent={sentimentScorePercent}
+            scoreLabel={sentimentScoreLabel}
+            tickPrefix="sentiment"
+          />
           {sentimentSummaryPoints.length > 0 && (
             <ul>
               {sentimentSummaryPoints.map((item, index) => (
@@ -3363,7 +3356,6 @@ function FullReportSection({
               ))}
             </ul>
           )}
-          <p>{sentimentSummaryText}</p>
         </article>
       </section>
 
@@ -3371,6 +3363,48 @@ function FullReportSection({
         <p className="full-report-source-note">Report source: {reportSourceLabel}</p>
       )}
     </article>
+  )
+}
+
+function FullReportScoreMeter({
+  zone,
+  percent,
+  scoreLabel,
+  tickPrefix,
+}: {
+  zone: ScoreZone
+  percent: number
+  scoreLabel: string
+  tickPrefix: string
+}) {
+  return (
+    <div className={`technical-score-meter-wrap zone-${zone} full-report-score-row`}>
+      <div className="technical-score-meter-visual" aria-hidden="true">
+        <div className="technical-score-meter-track">
+          <div className="technical-score-meter-segments">
+            <span className="segment strong-bearish" />
+            <span className="segment bearish" />
+            <span className="segment neutral" />
+            <span className="segment bullish" />
+            <span className="segment strong-bullish" />
+          </div>
+          <span className="technical-score-meter-marker" style={{ left: `${percent}%` }} />
+        </div>
+        <div className="technical-score-meter-scale">
+          {[0, 25, 50, 75, 100].map((tick) => (
+            <span
+              key={`${tickPrefix}-tick-${tick}`}
+              className={`technical-score-meter-tick${tick === 0 ? ' edge-start' : ''}${tick === 100 ? ' edge-end' : ''}`}
+              style={{ left: `${tick}%` }}
+            >
+              <span className="technical-score-meter-tick-mark" />
+              <span className="technical-score-meter-tick-label">{tick}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+      <span className="full-report-score-value">{scoreLabel}</span>
+    </div>
   )
 }
 
@@ -3476,39 +3510,6 @@ function buildRiskItems(raw: string | null | undefined): string[] {
     'Regulatory and legal developments may pressure valuation multiples.',
     'Execution risk increases when demand slows in core segments.',
   ]
-}
-
-function buildTechnicalSubtext(input: {
-  rsi: number | null
-  sma200: number | null
-  currentPrice: number | null
-  currency: string
-  fallback: string
-}): string {
-  const parts: string[] = []
-  if (isFiniteNumber(input.rsi)) {
-    if (input.rsi >= 70) {
-      parts.push(`RSI at ${input.rsi.toFixed(0)} points to overbought momentum.`)
-    } else if (input.rsi <= 30) {
-      parts.push(`RSI at ${input.rsi.toFixed(0)} signals oversold conditions.`)
-    } else {
-      parts.push(`RSI at ${input.rsi.toFixed(0)} indicates balanced momentum.`)
-    }
-  }
-  if (isFiniteNumber(input.sma200) && isFiniteNumber(input.currentPrice)) {
-    const position = input.currentPrice >= input.sma200 ? 'above' : 'below'
-    parts.push(
-      `Trading ${position} 200-day DMA (${formatCurrency(input.sma200, input.currency)}).`,
-    )
-  }
-  if (parts.length > 0) {
-    return parts.join(' ')
-  }
-  return summarizeForCard(
-    input.fallback,
-    'Technical context is currently unavailable.',
-    195,
-  )
 }
 
 function buildRevenueTrendRows(
@@ -3710,86 +3711,6 @@ function buildSectionSummaryPoints(
   return [sanitizeReportText(fallback) || fallback]
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-type PrintableReportInput = {
-  reportMarkup: string
-  title: string
-}
-
-function buildPrintableReportHtml(input: PrintableReportInput): string {
-  const pageStyles = Array.from(
-    document.querySelectorAll<HTMLStyleElement | HTMLLinkElement>('style, link[rel="stylesheet"]'),
-  )
-    .map((node) => node.outerHTML)
-    .join('\n')
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(input.title)}</title>
-    ${pageStyles}
-    <style>
-      :root { color-scheme: light; }
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #ffffff;
-      }
-      body {
-        padding: 16px;
-      }
-      .full-report-print-root {
-        max-width: 1160px;
-        margin: 0 auto;
-      }
-      .full-report-print-root .reveal {
-        animation: none !important;
-      }
-      .full-report-print-root .full-report-hero-actions,
-      .full-report-print-root .full-report-download-btn {
-        display: none !important;
-      }
-      .full-report-print-root .full-report-dashboard {
-        box-shadow: none !important;
-      }
-      .full-report-print-root .full-report-card {
-        break-inside: avoid;
-        page-break-inside: avoid;
-      }
-      @page {
-        size: A4;
-        margin: 12mm;
-      }
-      @media print {
-        body {
-          padding: 0;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-        .full-report-print-root {
-          max-width: none;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <main class="full-report-print-root">
-      ${input.reportMarkup}
-    </main>
-  </body>
-</html>`
-}
-
 function emphasizeSummaryLabel(text: string): string {
   return text.replace(/^(\s*)Summary:\s*/gim, '$1**Summary:** ')
 }
@@ -3804,7 +3725,6 @@ function renderSection(
   analysis: AnalysisResponse,
   ticker: string,
   isGeneratingReport: boolean = false,
-  isAuthenticated: boolean = false,
 ) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
   const displayCurrency = resolveAnalysisCurrency(analysis)
@@ -3854,7 +3774,6 @@ function renderSection(
         <FullReportSection
           analysis={analysis}
           isGeneratingReport={isGeneratingReport}
-          isAuthenticated={isAuthenticated}
         />
       )
     case 'overview':
@@ -4045,6 +3964,65 @@ function scoreBand(score: number | null): string {
     return 'Neutral'
   }
   return 'Bearish'
+}
+
+type ScoreZone = 'strong-bearish' | 'bearish' | 'neutral' | 'bullish' | 'strong-bullish'
+
+function resolveScoreZone(score: number | null): ScoreZone {
+  if (!isFiniteNumber(score)) {
+    return 'neutral'
+  }
+  if (score < 30) {
+    return 'strong-bearish'
+  }
+  if (score < 45) {
+    return 'bearish'
+  }
+  if (score < 55) {
+    return 'neutral'
+  }
+  if (score < 70) {
+    return 'bullish'
+  }
+  return 'strong-bullish'
+}
+
+function resolveFundamentalSignalLabel(score: number | null): string {
+  if (!isFiniteNumber(score)) {
+    return 'N/A'
+  }
+  if (score < 30) {
+    return 'Weak'
+  }
+  if (score < 45) {
+    return 'Below Avg'
+  }
+  if (score < 55) {
+    return 'Average'
+  }
+  if (score < 70) {
+    return 'Good'
+  }
+  return 'Strong'
+}
+
+function resolveSentimentSignalLabel(score: number | null): string {
+  if (!isFiniteNumber(score)) {
+    return 'N/A'
+  }
+  if (score < 30) {
+    return 'Very Negative'
+  }
+  if (score < 45) {
+    return 'Negative'
+  }
+  if (score < 55) {
+    return 'Mixed'
+  }
+  if (score < 70) {
+    return 'Positive'
+  }
+  return 'Very Positive'
 }
 
 function toneFromVerdict(verdict: string): string {
