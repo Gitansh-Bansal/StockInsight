@@ -332,6 +332,8 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             "longName": _safe_get(info, "longName", "shortName", default=""),
             "sector": _safe_get(info, "sector"),
             "industry": _safe_get(info, "industry"),
+            "exchange": _safe_get(info, "exchange"),
+            "fullExchangeName": _safe_get(info, "fullExchangeName"),
             "website": _safe_get(info, "website"),
             "description": _safe_get(info, "longBusinessSummary"),
 

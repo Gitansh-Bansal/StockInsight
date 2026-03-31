@@ -21,6 +21,8 @@ export interface FundamentalData {
   longName?: string
   sector?: string
   industry?: string
+  exchange?: string
+  fullExchangeName?: string
   website?: string
   description?: string
   currentPrice?: number

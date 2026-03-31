@@ -3332,7 +3332,14 @@ function FullReportSection({
         <div className="full-report-hero-left">
           <div className="full-report-title-row">
             <h2>{companyName} ({analysis.ticker})</h2>
-            <span className="full-report-exchange-tag">{inferExchangeLabel(analysis.ticker)}</span>
+            <span className="full-report-exchange-tag">
+              {inferExchangeLabel({
+                ticker: analysis.ticker,
+                symbol: fundamentalData?.symbol,
+                exchange: fundamentalData?.exchange,
+                fullExchangeName: fundamentalData?.fullExchangeName,
+              })}
+            </span>
           </div>
           <div className="full-report-price-strip">
             <div className="full-report-price-block">
@@ -3825,21 +3832,54 @@ function formatCompactMoney(
   }
 }
 
-function inferExchangeLabel(ticker: string): string {
-  const normalized = ticker.trim().toUpperCase()
-  if (normalized.endsWith('.NS')) {
+function inferExchangeLabel(input: {
+  ticker: string
+  symbol?: string | null
+  exchange?: string | null
+  fullExchangeName?: string | null
+}): string {
+  const directExchange = `${input.fullExchangeName ?? input.exchange ?? ''}`.trim().toUpperCase()
+  if (directExchange) {
+    if (
+      directExchange.includes('NASDAQ') ||
+      directExchange === 'NMS' ||
+      directExchange === 'NGM' ||
+      directExchange === 'NCM'
+    ) {
+      return 'NASDAQ'
+    }
+    if (directExchange.includes('NEW YORK') || directExchange === 'NYQ' || directExchange === 'NYSE') {
+      return 'NYSE'
+    }
+    if (directExchange.includes('NSE') || directExchange === 'NSI') {
+      return 'NSE'
+    }
+    if (directExchange.includes('BSE') || directExchange === 'BSE') {
+      return 'BSE'
+    }
+    if (directExchange.includes('LSE') || directExchange === 'LSE') {
+      return 'LSE'
+    }
+    if (directExchange.includes('TORONTO') || directExchange === 'TOR') {
+      return 'TSX'
+    }
+    return directExchange
+  }
+
+  const tickerOrSymbol = (input.symbol || input.ticker || '').trim().toUpperCase()
+  if (tickerOrSymbol.endsWith('.NS')) {
     return 'NSE'
   }
-  if (normalized.endsWith('.BO')) {
+  if (tickerOrSymbol.endsWith('.BO')) {
     return 'BSE'
   }
-  if (normalized.endsWith('.L')) {
+  if (tickerOrSymbol.endsWith('.L')) {
     return 'LSE'
   }
-  if (normalized.endsWith('.TO')) {
+  if (tickerOrSymbol.endsWith('.TO')) {
     return 'TSX'
   }
-  return 'NASDAQ'
+  return 'N/A'
 }
 
 function formatSignedPercent(value: number): string {
