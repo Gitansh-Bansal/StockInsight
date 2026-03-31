@@ -3054,7 +3054,238 @@ function FullReportSection({
   ]
 
   const revenueRows = buildRevenueTrendRows(fundamentalData?.revenueTrend)
-  const financialSnapshot = buildFinancialSnapshotData(fundamentalData)
+  const fullReportIndicators = technicalResult?.indicators
+  const fullReportStructure = technicalResult?.structure
+  const fullReportTechnicalCurrency = normalizeCurrencyCode(
+    technicalData?.currency ?? technicalResult?.currency ?? displayCurrency,
+  )
+  const fullReportSma200 = isFiniteNumber(fullReportIndicators?.SMA200)
+    ? fullReportIndicators.SMA200
+    : null
+  const fullReportTrendBias = resolveTrendBias(technicalResult?.trend, technicalResult?.signal)
+  const fullReportRsiWidget = resolveRsiInsightWidget(
+    isFiniteNumber(technicalData?.rsi) ? technicalData.rsi : fullReportIndicators?.RSI,
+  )
+  const fullReportMacdWidget = resolveMacdInsightWidget(
+    fullReportIndicators?.MACD,
+    fullReportIndicators?.MACD_signal,
+  )
+  const fullReportAdxWidget = resolveAdxInsightWidget(fullReportIndicators?.ADX, fullReportTrendBias)
+  const fullReportCurrentPrice = isFiniteNumber(latestPrice)
+    ? latestPrice
+    : isFiniteNumber(fullReportIndicators?.close)
+      ? fullReportIndicators.close
+      : null
+  const fullReportMomentumWidget = resolveMomentumInsightWidget({
+    trend: technicalResult?.trend,
+    signal: technicalResult?.signal,
+    score: technicalScoreValue ?? 50,
+    close: fullReportCurrentPrice,
+    sma20: technicalData?.sma20 ?? null,
+    sma50: technicalData?.sma50 ?? null,
+    rsi: fullReportRsiWidget.numericValue,
+    macdTone: fullReportMacdWidget.tone,
+  })
+  const [fullReportNearestSupport] = pickSupportLevels(
+    uniqueSortedLevels(fullReportStructure?.support),
+    fullReportCurrentPrice,
+  )
+  const [fullReportNearestResistance] = pickResistanceLevels(
+    uniqueSortedLevels(fullReportStructure?.resistance),
+    fullReportCurrentPrice,
+  )
+  const fullReportVolumeSnapshot = buildVolumeSnapshot(ohlcv)
+  const fullReportRiskMetrics = buildRiskMetrics({
+    recentCloses: fullReportVolumeSnapshot.recentCloses,
+    beta: fundamentalData?.beta ?? null,
+    currentPrice: fullReportCurrentPrice,
+    nearestSupport: fullReportNearestSupport,
+    nearestResistance: fullReportNearestResistance,
+  })
+  const fullReportVolatilityMetric =
+    fullReportRiskMetrics.find((metric) => metric.label === 'Volatility (30 day)') ?? null
+  const fullReportVolatilityValue = fullReportVolatilityMetric?.value ?? 'N/A'
+  const fullReportVolatilityNumericValue = parseMetricNumber(fullReportVolatilityValue)
+  const fullReportSma20Position = resolveAveragePositionStatus(
+    technicalData?.sma20 ?? null,
+    fullReportCurrentPrice,
+  )
+  const fullReportSma50Position = resolveAveragePositionStatus(
+    technicalData?.sma50 ?? null,
+    fullReportCurrentPrice,
+  )
+  const fullReportSma200Position = resolveAveragePositionStatus(
+    fullReportSma200,
+    fullReportCurrentPrice,
+  )
+  const fullReportLow52 = technicalData?.['52WeekLow'] ?? null
+  const fullReportHigh52 = technicalData?.['52WeekHigh'] ?? null
+  const hasFullReport52WeekRange =
+    isFiniteNumber(fullReportLow52) &&
+    isFiniteNumber(fullReportHigh52) &&
+    fullReportHigh52 > fullReportLow52 &&
+    isFiniteNumber(fullReportCurrentPrice)
+  const fullReportYearRangePercent = hasFullReport52WeekRange
+    ? clampPercent(
+      ((fullReportCurrentPrice - fullReportLow52) / (fullReportHigh52 - fullReportLow52)) * 100,
+    )
+    : 50
+  const fullReportYearRangeTone: InsightTone = !hasFullReport52WeekRange
+    ? 'neutral'
+    : fullReportYearRangePercent >= 65
+      ? 'bullish'
+      : fullReportYearRangePercent <= 35
+        ? 'bearish'
+        : 'neutral'
+  const fullReportYearRangeStatus = !hasFullReport52WeekRange
+    ? 'Not available'
+    : fullReportYearRangePercent >= 80
+      ? 'Near 52W high'
+      : fullReportYearRangePercent <= 20
+        ? 'Near 52W low'
+        : 'Within range'
+  const fullReportYearRangeValue = hasFullReport52WeekRange
+    ? `${fullReportYearRangePercent.toFixed(1)}%`
+    : 'N/A'
+  const fullReportMovingAverageAlignment = resolveMovingAverageAlignment({
+    price: fullReportCurrentPrice,
+    sma20: technicalData?.sma20 ?? null,
+    sma50: technicalData?.sma50 ?? null,
+    sma200: fullReportSma200,
+  })
+  const fullReportSnapshotTiles: TechnicalSnapshotRow[] = [
+    {
+      key: 'trend',
+      metric: 'Trend',
+      value: safeText(technicalResult?.trend),
+      status: toneToLabel(fullReportTrendBias),
+      tone: fullReportTrendBias,
+      progressPercent: isFiniteNumber(technicalScoreValue)
+        ? clampPercent(technicalScoreValue)
+        : toneToPercent(fullReportTrendBias),
+    },
+    {
+      key: 'range52',
+      metric: '52W Range Position',
+      value: fullReportYearRangeValue,
+      status: fullReportYearRangeStatus,
+      tone: fullReportYearRangeTone,
+      progressPercent: fullReportYearRangePercent,
+      numeric: hasFullReport52WeekRange
+        ? { value: fullReportYearRangePercent, format: 'percent', decimals: 1 }
+        : undefined,
+    },
+    {
+      key: 'momentum',
+      metric: 'Momentum',
+      value: fullReportMomentumWidget.valueText,
+      status: fullReportMomentumWidget.signalLabel,
+      tone: fullReportMomentumWidget.tone,
+      progressPercent: fullReportMomentumWidget.percent,
+      numeric: { value: fullReportMomentumWidget.percent, format: 'number', decimals: 1 },
+    },
+    {
+      key: 'volatility',
+      metric: 'Volatility',
+      value: fullReportVolatilityValue,
+      status: fullReportVolatilityMetric
+        ? riskLevelLabel(fullReportVolatilityMetric.level)
+        : 'Not available',
+      tone: fullReportVolatilityMetric
+        ? riskLevelToTone(fullReportVolatilityMetric.level)
+        : 'neutral',
+      progressPercent: isFiniteNumber(fullReportVolatilityNumericValue)
+        ? clampPercent((fullReportVolatilityNumericValue / 60) * 100)
+        : 50,
+      numeric: isFiniteNumber(fullReportVolatilityNumericValue)
+        ? { value: fullReportVolatilityNumericValue, format: 'percent', decimals: 1 }
+        : undefined,
+    },
+    {
+      key: 'adx',
+      metric: 'ADX',
+      value: fullReportAdxWidget.valueText,
+      status: fullReportAdxWidget.contextLabel,
+      tone: fullReportAdxWidget.tone,
+      progressPercent: fullReportAdxWidget.percent,
+      numeric: isFiniteNumber(fullReportAdxWidget.numericValue)
+        ? { value: fullReportAdxWidget.numericValue, format: 'number', decimals: 1 }
+        : undefined,
+    },
+    {
+      key: 'rsi',
+      metric: 'RSI (14)',
+      value: fullReportRsiWidget.valueText,
+      status: resolveRsiStatusLabel(fullReportRsiWidget.contextLabel),
+      tone: fullReportRsiWidget.tone,
+      progressPercent: fullReportRsiWidget.percent,
+      numeric: isFiniteNumber(fullReportRsiWidget.numericValue)
+        ? { value: fullReportRsiWidget.numericValue, format: 'number', decimals: 1 }
+        : undefined,
+    },
+    {
+      key: 'macd',
+      metric: 'MACD Signal',
+      value: toneToLabel(fullReportMacdWidget.tone),
+      status: toneArrow(fullReportMacdWidget.tone),
+      tone: fullReportMacdWidget.tone,
+      progressPercent: fullReportMacdWidget.percent,
+    },
+    {
+      key: 'sma20',
+      metric: '20 Day SMA',
+      value: formatCurrency(technicalData?.sma20, fullReportTechnicalCurrency),
+      status: fullReportSma20Position.label,
+      tone: fullReportSma20Position.tone,
+      progressPercent: resolveMovingAverageProgress(
+        technicalData?.sma20 ?? null,
+        fullReportCurrentPrice,
+      ),
+      numeric: isFiniteNumber(technicalData?.sma20)
+        ? {
+          value: technicalData.sma20,
+          format: 'currency',
+          decimals: 2,
+          currency: fullReportTechnicalCurrency,
+        }
+        : undefined,
+    },
+    {
+      key: 'sma50',
+      metric: '50 Day SMA',
+      value: formatCurrency(technicalData?.sma50, fullReportTechnicalCurrency),
+      status: fullReportSma50Position.label,
+      tone: fullReportSma50Position.tone,
+      progressPercent: resolveMovingAverageProgress(
+        technicalData?.sma50 ?? null,
+        fullReportCurrentPrice,
+      ),
+      numeric: isFiniteNumber(technicalData?.sma50)
+        ? {
+          value: technicalData.sma50,
+          format: 'currency',
+          decimals: 2,
+          currency: fullReportTechnicalCurrency,
+        }
+        : undefined,
+    },
+    {
+      key: 'sma200',
+      metric: '200 Day SMA',
+      value: formatCurrency(fullReportSma200, fullReportTechnicalCurrency),
+      status: fullReportSma200Position.label,
+      tone: fullReportSma200Position.tone,
+      progressPercent: resolveMovingAverageProgress(fullReportSma200, fullReportCurrentPrice),
+      numeric: isFiniteNumber(fullReportSma200)
+        ? {
+          value: fullReportSma200,
+          format: 'currency',
+          decimals: 2,
+          currency: fullReportTechnicalCurrency,
+        }
+        : undefined,
+    },
+  ]
   const shareholding = buildShareholdingDistribution(fundamentalData?.shareholdingPattern)
   const shareSecondBreak = shareholding.institutional + shareholding.retail
   const shareRingBackground = `conic-gradient(#0c4ab8 0 ${shareholding.institutional.toFixed(2)}%, #afc1ff ${shareholding.institutional.toFixed(2)}% ${shareSecondBreak.toFixed(2)}%, #d8dfee ${shareSecondBreak.toFixed(2)}% 100%)`
@@ -3084,6 +3315,8 @@ function FullReportSection({
   const reportSourceLabel = analysis.reportSource
     ? analysis.reportSource.toUpperCase()
     : null
+  const fullReportSnapshotSectionRef = useRef<HTMLElement | null>(null)
+  const isFullReportSnapshotInView = useInViewOnce(fullReportSnapshotSectionRef, { threshold: 0.2 })
 
   return (
     <article className="full-report-dashboard reveal">
@@ -3202,38 +3435,32 @@ function FullReportSection({
             </article>
           </div>
 
-          <article className="full-report-card full-report-table-card">
-            <h3>Financial Snapshot</h3>
-            <div className="full-report-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Metric (USD Mn)</th>
-                    {financialSnapshot.years.map((year) => (
-                      <th key={year}>{year}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {financialSnapshot.rows.map((row) => (
-                    <tr key={row.label}>
-                      <th scope="row">{row.label}</th>
-                      {row.values.map((value, index) => (
-                        <td
-                          key={`${row.label}-${financialSnapshot.years[index]}`}
-                          className={
-                            index === row.values.length - 1 ? 'is-highlight' : undefined
-                          }
-                        >
-                          {formatTableMetric(value)}
-                        </td>
-                      ))}
-                    </tr>
+          <section
+            ref={fullReportSnapshotSectionRef}
+            className="technical-snapshot-section"
+            aria-label="Technical snapshot"
+          >
+            <div className="technical-snapshot-panels">
+              <article className="snapshot-panel">
+                <header className="snapshot-panel-head">
+                  <h4>Technical Snapshot</h4>
+                  <span className={`snapshot-badge tone-${fullReportMovingAverageAlignment.tone}`}>
+                    {fullReportMovingAverageAlignment.label}
+                  </span>
+                </header>
+                <div className="snapshot-tiles-grid">
+                  {fullReportSnapshotTiles.map((tile, index) => (
+                    <SnapshotMetricTile
+                      key={`full-report-${tile.key}`}
+                      tile={tile}
+                      index={index}
+                      isAnimated={isFullReportSnapshotInView}
+                    />
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </article>
             </div>
-          </article>
+          </section>
         </div>
 
         <aside className="full-report-side-col">
@@ -3416,11 +3643,6 @@ type RevenueBarRow = {
   profitValue: number | null
 }
 
-type FinancialSnapshotData = {
-  years: string[]
-  rows: Array<{ label: string; values: Array<number | null> }>
-}
-
 type ShareholdingDistribution = {
   institutional: number
   retail: number
@@ -3556,57 +3778,6 @@ function buildRevenueTrendRows(
   })
 }
 
-function buildFinancialSnapshotData(
-  data: FundamentalData | null | undefined,
-): FinancialSnapshotData {
-  const revenueTrend = (data?.revenueTrend ?? []).slice(-3)
-  if (revenueTrend.length === 0) {
-    return {
-      years: ['FY 2022', 'FY 2023', 'FY 2024 (E)'],
-      rows: [
-        { label: 'Total Revenue', values: [null, null, null] },
-        { label: 'Operating Income', values: [null, null, null] },
-        { label: 'Net Income', values: [null, null, null] },
-        { label: 'Cash & Equivalents', values: [null, null, null] },
-      ],
-    }
-  }
-
-  const marginsByYear = new Map((data?.marginsTrend ?? []).map((row) => [row.year, row]))
-  const cashflowByYear = new Map((data?.cashflowTrend ?? []).map((row) => [row.year, row]))
-  const years = revenueTrend.map((row, index) =>
-    index === revenueTrend.length - 1 ? `FY ${row.year} (E)` : `FY ${row.year}`,
-  )
-
-  const operatingIncome = revenueTrend.map((row) => {
-    const margin = marginsByYear.get(row.year)?.operatingMargin
-    if (isFiniteNumber(row.revenue) && isFiniteNumber(margin)) {
-      return row.revenue * margin
-    }
-    return null
-  })
-  const netIncome = revenueTrend.map((row) =>
-    isFiniteNumber(row.netProfit) ? row.netProfit : null,
-  )
-  const cashAndEquivalents = revenueTrend.map((row, index) => {
-    if (index === revenueTrend.length - 1 && isFiniteNumber(data?.totalCash)) {
-      return data?.totalCash ?? null
-    }
-    const freeCashFlow = cashflowByYear.get(row.year)?.freeCashFlow
-    return isFiniteNumber(freeCashFlow) ? freeCashFlow : null
-  })
-
-  return {
-    years,
-    rows: [
-      { label: 'Total Revenue', values: revenueTrend.map((row) => row.revenue ?? null) },
-      { label: 'Operating Income', values: operatingIncome },
-      { label: 'Net Income', values: netIncome },
-      { label: 'Cash & Equivalents', values: cashAndEquivalents },
-    ],
-  }
-}
-
 function normalizeSharePercent(value: number | null | undefined): number {
   if (!isFiniteNumber(value)) {
     return 0
@@ -3652,13 +3823,6 @@ function formatCompactMoney(
   } catch {
     return `${compactFormatter.format(value)} ${normalizedCurrency}`
   }
-}
-
-function formatTableMetric(value: number | null | undefined): string {
-  if (!isFiniteNumber(value)) {
-    return 'N/A'
-  }
-  return wholeNumberFormatter.format(Math.round(value))
 }
 
 function inferExchangeLabel(ticker: string): string {
@@ -4476,7 +4640,7 @@ function resolveAdxInsightWidget(
   }
 
   const strengthLabel =
-    rawAdx < 20 ? 'Weak trend (<20)' : rawAdx <= 40 ? 'Moderate trend (20-40)' : 'Strong trend (>40)'
+    rawAdx < 20 ? 'Weak trend (<20)' : rawAdx <= 40 ? 'Moderate trend' : 'Strong trend (>40)'
 
   return {
     tone: rawAdx > 20 ? trendBias : 'neutral',
