@@ -30,7 +30,8 @@ def _load_env_file(env_path: Path) -> None:
         if value and len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
             value = value[1:-1]
         if key:
-            os.environ.setdefault(key, value)
+            # Overwrite environment variables so that changes to .env don't require restarting the terminal
+            os.environ[key] = value
 
 
 # Load root-level .env (StockInsight/.env) and backend-local .env if present.
@@ -68,6 +69,7 @@ INSTALLED_APPS = [
     'sentiment',
     'reports',
     'analysis',
+    'discussions',
 ]
 
 MIDDLEWARE = [
@@ -106,8 +108,12 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME', 'stockinsight'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
 
@@ -173,10 +179,20 @@ LOGGING = {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "standard",
+            "stream": "ext://sys.stdout",
         },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
     },
     "loggers": {
         "analysis": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "analysis.timing": {
             "handlers": ["console"],
             "level": "INFO",
             "propagate": False,

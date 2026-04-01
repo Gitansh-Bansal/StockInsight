@@ -21,11 +21,13 @@ from ninja import NinjaAPI
 
 from analysis.api import router as analysis_router
 from backend.auth_api import router as auth_router
+from discussions.api import router as discussions_router
 
 api = NinjaAPI()
 
 api.add_router("", analysis_router)
 api.add_router("/auth", auth_router)
+api.add_router("/discussions", discussions_router)
 
 
 @api.get("/health")

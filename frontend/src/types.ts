@@ -204,3 +204,55 @@ export interface SearchSuggestion {
 export interface ComparisonResponse {
   results: Record<string, AnalysisResponse | { error: string }>
 }
+
+// ─── Discussion Portal Types ───────────────────────────────────────────
+
+export interface DiscussionAuthor {
+  id: number
+  username: string
+}
+
+export interface DiscussionReply {
+  id: number
+  postId: number
+  parentId: number | null
+  author: DiscussionAuthor
+  body: string
+  createdAt: string
+  updatedAt: string
+  upvotes: number
+  downvotes: number
+  userVote: number // +1, -1, or 0
+  children: DiscussionReply[]
+}
+
+export interface DiscussionPost {
+  id: number
+  ticker: string
+  author: DiscussionAuthor
+  title: string
+  body: string
+  createdAt: string
+  updatedAt: string
+  upvotes: number
+  downvotes: number
+  userVote: number
+  replyCount: number
+  replies?: DiscussionReply[]
+}
+
+export interface DiscussionListResponse {
+  ticker: string
+  posts: DiscussionPost[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+export interface VoteResponse {
+  upvotes: number
+  downvotes: number
+  userVote: number
+  removed?: boolean
+}

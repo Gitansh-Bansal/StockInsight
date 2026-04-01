@@ -16,6 +16,7 @@ from sentiment.services import get_sentiment_analysis, preload_finbert_model
 from reports.services import generate_report_bundle
 
 logger = logging.getLogger(__name__)
+timing_logger = logging.getLogger("analysis.timing")
 
 # Weights for overall score (must sum to 1.0)
 WEIGHT_FUNDAMENTAL = 0.35
@@ -25,7 +26,7 @@ WEIGHT_SENTIMENT = 0.30
 
 def _timing_log(enabled: bool, message: str, *args: Any) -> None:
     if enabled:
-        logger.info(message, *args)
+        timing_logger.info(message, *args)
 
 
 def _compute_overall_score(

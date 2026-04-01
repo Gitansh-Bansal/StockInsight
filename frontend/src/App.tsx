@@ -9,6 +9,7 @@ import './App.css'
 import { AuthPanel } from './components/AuthPanel'
 import { StockSearchForm } from './components/StockSearchForm'
 import { fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, logoutUser, registerUser } from './api'
+import { DiscussionSection } from './components/DiscussionSection'
 import type {
   AnalysisResponse,
   AuthMode,
@@ -28,6 +29,7 @@ type AnalysisTab =
   | 'technical'
   | 'sentiment'
   | 'full-report'
+  | 'discussion'
 
 const ANALYSIS_TABS: Array<{ key: AnalysisTab; label: string }> = [
   { key: 'overview', label: 'Overall' },
@@ -35,6 +37,7 @@ const ANALYSIS_TABS: Array<{ key: AnalysisTab; label: string }> = [
   { key: 'technical', label: 'Technical' },
   { key: 'sentiment', label: 'Sentiment' },
   { key: 'full-report', label: 'Full Report' },
+  { key: 'discussion', label: 'Discussion' },
 ]
 
 type AppRoute =
@@ -175,6 +178,7 @@ function App() {
             key={route.ticker}
             ticker={route.ticker}
             tab={route.tab}
+            user={authUser}
             onTabChange={(tab) =>
               navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`, {
                 replace: true,
@@ -755,10 +759,11 @@ function AuthPage({
 type AnalysisPageProps = {
   ticker: string
   tab: AnalysisTab
+  user: import('./types').AuthUser | null
   onTabChange: (tab: AnalysisTab) => void
 }
 
-function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
+function AnalysisPage({ ticker, tab, user, onTabChange }: AnalysisPageProps) {
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -911,7 +916,11 @@ function AnalysisPage({ ticker, tab, onTabChange }: AnalysisPageProps) {
         </div>
       )}
 
-      {!isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport)}
+      {tab === 'discussion' ? (
+        <DiscussionSection ticker={ticker} user={user} />
+      ) : (
+        !isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport)
+      )}
     </section>
   )
 }
@@ -4126,7 +4135,8 @@ function normalizeTab(value: string): AnalysisTab {
     raw === 'fundamental' ||
     raw === 'technical' ||
     raw === 'sentiment' ||
-    raw === 'full-report'
+    raw === 'full-report' ||
+    raw === 'discussion'
   ) {
     return raw
   }

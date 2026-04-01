@@ -1,4 +1,4 @@
-import type { AnalysisResponse, AuthUser, ComparisonResponse, OhlcvPoint, SearchSuggestion } from './types'
+import type { AnalysisResponse, AuthUser, ComparisonResponse, DiscussionListResponse, DiscussionPost, DiscussionReply, OhlcvPoint, SearchSuggestion, VoteResponse } from './types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
   /\/$/,
@@ -305,4 +305,96 @@ export async function fetchComparisonAnalysis(
   }
 
   return { results: mergedResults }
+}
+
+// ─── Discussion Portal API ─────────────────────────────────────────────
+
+export async function fetchDiscussions(
+  ticker: string,
+  page = 1,
+  sort: 'newest' | 'top' = 'newest',
+): Promise<DiscussionListResponse> {
+  const cleanTicker = ticker.trim().toUpperCase()
+  return apiRequest<DiscussionListResponse>(
+    `/api/discussions/${encodeURIComponent(cleanTicker)}?page=${page}&sort=${sort}`,
+  )
+}
+
+export async function createDiscussionPost(
+  ticker: string,
+  title: string,
+  body: string,
+): Promise<DiscussionPost> {
+  const cleanTicker = ticker.trim().toUpperCase()
+  return apiRequest<DiscussionPost>(
+    `/api/discussions/${encodeURIComponent(cleanTicker)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ title, body }),
+    },
+  )
+}
+
+export async function fetchDiscussionThread(
+  ticker: string,
+  postId: number,
+): Promise<DiscussionPost> {
+  const cleanTicker = ticker.trim().toUpperCase()
+  return apiRequest<DiscussionPost>(
+    `/api/discussions/${encodeURIComponent(cleanTicker)}/${postId}`,
+  )
+}
+
+export async function createDiscussionReply(
+  ticker: string,
+  postId: number,
+  body: string,
+  parentReplyId?: number,
+): Promise<DiscussionReply> {
+  const cleanTicker = ticker.trim().toUpperCase()
+  return apiRequest<DiscussionReply>(
+    `/api/discussions/${encodeURIComponent(cleanTicker)}/${postId}/reply`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        body,
+        parent_reply_id: parentReplyId ?? null,
+      }),
+    },
+  )
+}
+
+export async function voteDiscussion(
+  postId?: number,
+  replyId?: number,
+  value: 1 | -1 = 1,
+): Promise<VoteResponse> {
+  return apiRequest<VoteResponse>('/api/discussions/vote', {
+    method: 'POST',
+    body: JSON.stringify({
+      post_id: postId ?? null,
+      reply_id: replyId ?? null,
+      value,
+    }),
+  })
+}
+
+export async function deleteDiscussionPost(
+  ticker: string,
+  postId: number,
+): Promise<{ success: boolean }> {
+  const cleanTicker = ticker.trim().toUpperCase()
+  return apiRequest<{ success: boolean }>(
+    `/api/discussions/${encodeURIComponent(cleanTicker)}/${postId}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function deleteDiscussionReply(
+  replyId: number,
+): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(
+    `/api/discussions/reply/${replyId}`,
+    { method: 'DELETE' },
+  )
 }
