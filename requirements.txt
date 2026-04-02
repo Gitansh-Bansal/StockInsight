@@ -1,18 +1,16 @@
-asgiref==3.11.0
 Django==6.0.1
 django-cors-headers==4.9.0
-django-ninja>=1.5.3
-psycopg2-binary>=2.9.0
-sqlparse==0.5.5
+django-ninja==1.5.3
+psycopg2-binary==2.9.11
 
-yfinance>=0.2.54
-pandas>=2.0.0
-numpy>=1.24.0
+yfinance==1.1.0
+pandas==3.0.0
+numpy==2.4.2
 
-transformers>=4.30.0
-torch>=2.0.0
+transformers==5.1.0
+torch==2.10.0
 
-google-genai>=0.3.0
-python-dotenv>=1.0.0
+google-genai==1.63.0
+python-dotenv==1.2.1
 
-requests>=2.31.0
+requests==2.32.5

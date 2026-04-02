@@ -10,6 +10,7 @@ import { AuthPanel } from './components/AuthPanel'
 import { StockSearchForm } from './components/StockSearchForm'
 import { fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, logoutUser, registerUser } from './api'
 import { DiscussionSection } from './components/DiscussionSection'
+import { PdfReportTemplate } from './components/PdfReportTemplate'
 import type {
   AnalysisResponse,
   AuthMode,
@@ -919,7 +920,7 @@ function AnalysisPage({ ticker, tab, user, onTabChange }: AnalysisPageProps) {
       {tab === 'discussion' ? (
         <DiscussionSection ticker={ticker} user={user} />
       ) : (
-        !isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport)
+        !isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport, user)
       )}
     </section>
   )
@@ -2910,10 +2911,89 @@ function IndicatorMiniTooltip({
 function FullReportSection({
   analysis,
   isGeneratingReport,
+  user,
 }: {
   analysis: AnalysisResponse
   isGeneratingReport?: boolean
+  user?: import('./types').AuthUser | null
 }) {
+  const pdfRef = useRef<HTMLDivElement | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  const handleDownloadPdf = useCallback(async () => {
+    const element = pdfRef.current
+    if (!element) return
+    setIsDownloading(true)
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const { jsPDF } = await import('jspdf')
+
+      // Temporarily make element visible for capture
+      element.style.position = 'absolute'
+      element.style.left = '0'
+      element.style.top = '0'
+      element.style.zIndex = '-1'
+      element.style.opacity = '1'
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        width: 794,
+        windowWidth: 794,
+      })
+
+      // Restore hidden position
+      element.style.left = '-9999px'
+      element.style.zIndex = '-1'
+
+      const imgData = canvas.toDataURL('image/png')
+      // A4: 210mm x 297mm
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pdfWidth = 210
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width
+
+      // If content is taller than one page, scale to fit or add pages
+      const pageHeight = 297
+      if (pdfHeight <= pageHeight) {
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      } else {
+        // Multi-page: slice the canvas
+        let remainingHeight = canvas.height
+        let position = 0
+        const pageCanvasHeight = (pageHeight / pdfWidth) * canvas.width
+
+        while (remainingHeight > 0) {
+          const pageCanvas = document.createElement('canvas')
+          pageCanvas.width = canvas.width
+          const sliceHeight = Math.min(pageCanvasHeight, remainingHeight)
+          pageCanvas.height = sliceHeight
+          const ctx = pageCanvas.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(
+              canvas,
+              0, position, canvas.width, sliceHeight,
+              0, 0, canvas.width, sliceHeight,
+            )
+          }
+          const pageImgData = pageCanvas.toDataURL('image/png')
+          const pageImgHeight = (sliceHeight * pdfWidth) / canvas.width
+
+          if (position > 0) pdf.addPage()
+          pdf.addImage(pageImgData, 'PNG', 0, 0, pdfWidth, pageImgHeight)
+
+          remainingHeight -= sliceHeight
+          position += sliceHeight
+        }
+      }
+
+      pdf.save(`${analysis.ticker}_StockInsight_Report.pdf`)
+    } catch (err) {
+      console.error('PDF generation failed:', err)
+    } finally {
+      setIsDownloading(false)
+    }
+  }, [analysis.ticker])
   const reportText = normalizeInlineBulletLists(
     emphasizeSummaryLabel(analysis.report?.trim() ?? ''),
   )
@@ -3329,13 +3409,40 @@ function FullReportSection({
 
   return (
     <article className="full-report-dashboard reveal">
-      <nav className="full-report-breadcrumbs" aria-label="Report breadcrumb">
-        <span>{sectorLabel}</span>
-        <span className="separator">/</span>
-        <span>{industryLabel}</span>
-        <span className="separator">/</span>
-        <span className="active">{companyName}</span>
-      </nav>
+      {/* Hidden PDF template for capture */}
+      <PdfReportTemplate ref={pdfRef} analysis={analysis} />
+
+      <div className="full-report-top-bar">
+        <nav className="full-report-breadcrumbs" aria-label="Report breadcrumb">
+          <span>{sectorLabel}</span>
+          <span className="separator">/</span>
+          <span>{industryLabel}</span>
+          <span className="separator">/</span>
+          <span className="active">{companyName}</span>
+        </nav>
+        {user && (
+          <button
+            type="button"
+            className="pdf-download-btn"
+            onClick={handleDownloadPdf}
+            disabled={isDownloading || isGeneratingReport}
+          >
+            {isDownloading ? (
+              <>
+                <span className="pdf-download-spinner" aria-hidden="true" />
+                Generating PDF…
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M8 1v9m0 0L5 7m3 3 3-3M2 12v1.5A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Download PDF Report
+              </>
+            )}
+          </button>
+        )}
+      </div>
 
       <section className="full-report-hero">
         <div className="full-report-hero-left">
@@ -3938,6 +4045,7 @@ function renderSection(
   analysis: AnalysisResponse,
   ticker: string,
   isGeneratingReport: boolean = false,
+  user?: import('./types').AuthUser | null,
 ) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
   const displayCurrency = resolveAnalysisCurrency(analysis)
@@ -3987,6 +4095,7 @@ function renderSection(
         <FullReportSection
           analysis={analysis}
           isGeneratingReport={isGeneratingReport}
+          user={user}
         />
       )
     case 'overview':
@@ -5784,7 +5893,7 @@ function parseSentimentSummary(raw: string): { insights: string[]; summary: stri
   }
 
   const summaryLabelPattern =
-    /(?:\*\*\s*)?\bsummary\b(?:\s*[:\-]\s*)?(?:\s*\*\*)?\s*[:\-]?\s*/i
+    /(?:\*\*\s*)?\bsummary\b(?:\s*[:-]\s*)?(?:\s*\*\*)?\s*[:-]?\s*/i
   const summaryLabelMatch = summaryLabelPattern.exec(text)
   let insightsPart = text
   let summaryPart = ''

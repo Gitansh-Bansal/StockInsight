@@ -1,0 +1,513 @@
+/* ═══════════════════════════════════════════════════════
+   PDF Report Template – A4 Layout (794 × 1123 px @96dpi)
+   ═══════════════════════════════════════════════════════ */
+
+.pdf-report-root {
+  width: 794px;
+  min-height: 1123px;
+  background: #ffffff;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  color: #1a1a2e;
+  font-size: 11px;
+  line-height: 1.45;
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: -1;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.pdf-report-root *,
+.pdf-report-root *::before,
+.pdf-report-root *::after {
+  box-sizing: border-box;
+}
+
+/* ── Header Strip ──────────────────────────────────── */
+
+.pdf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #ffffff;
+  padding: 16px 24px;
+  gap: 12px;
+}
+
+.pdf-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pdf-header-company {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.pdf-header-exchange {
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pdf-header-center {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.pdf-header-price {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.pdf-header-change {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pdf-header-change.positive {
+  color: #4ade80;
+}
+
+.pdf-header-change.negative {
+  color: #f87171;
+}
+
+.pdf-header-change.neutral {
+  color: #94a3b8;
+}
+
+.pdf-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pdf-header-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pdf-header-stat .label {
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.pdf-header-stat .value {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pdf-consensus-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.pdf-consensus-chip.tone-positive {
+  color: #4ade80;
+}
+
+.pdf-consensus-chip.tone-negative {
+  color: #f87171;
+}
+
+.pdf-consensus-chip.tone-neutral {
+  color: #fbbf24;
+}
+
+.pdf-consensus-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  position: relative;
+}
+
+.pdf-consensus-icon::after {
+  content: '✓';
+  font-size: 9px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ── Executive Briefing ────────────────────────────── */
+
+.pdf-executive {
+  padding: 14px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.pdf-executive h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #334155;
+  margin: 0 0 6px 0;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #2563eb;
+  display: inline-block;
+}
+
+.pdf-executive p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.55;
+  color: #334155;
+}
+
+/* ── Two-Column Mid Grid ───────────────────────────── */
+
+.pdf-mid-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.pdf-mid-grid > * {
+  padding: 14px 24px;
+}
+
+.pdf-mid-grid > *:first-child {
+  border-right: 1px solid #e2e8f0;
+}
+
+/* ── Revenue Chart ─────────────────────────────────── */
+
+.pdf-revenue-section h4,
+.pdf-metrics-section h4,
+.pdf-share-section h4,
+.pdf-ownership-section h4 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #334155;
+  margin: 0 0 12px 0;
+}
+
+.pdf-revenue-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 120px;
+  padding-top: 8px;
+}
+
+.pdf-revenue-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.pdf-revenue-bar-group {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  width: 100%;
+  justify-content: center;
+}
+
+.pdf-revenue-bar {
+  width: 18px;
+  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+  border-radius: 3px 3px 0 0;
+  min-height: 4px;
+}
+
+.pdf-profit-bar {
+  width: 18px;
+  background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+  border-radius: 3px 3px 0 0;
+  min-height: 4px;
+}
+
+.pdf-revenue-year {
+  font-size: 9px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.pdf-revenue-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 9px;
+  color: #64748b;
+}
+
+.pdf-revenue-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.pdf-revenue-legend i.revenue {
+  background: #2563eb;
+}
+
+.pdf-revenue-legend i.profit {
+  background: #059669;
+}
+
+/* ── Key Performance Metrics ───────────────────────── */
+
+.pdf-metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.pdf-metrics-table th {
+  text-align: right;
+  font-weight: 600;
+  color: #64748b;
+  padding: 4px 0;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pdf-metrics-table th:first-child {
+  text-align: left;
+}
+
+.pdf-metrics-table td {
+  padding: 5px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.pdf-metrics-table td:first-child {
+  font-weight: 500;
+  color: #334155;
+}
+
+.pdf-metrics-table td:nth-child(2),
+.pdf-metrics-table td:nth-child(3) {
+  text-align: right;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* ── Shareholding Pattern ──────────────────────────── */
+
+.pdf-share-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-share-content {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.pdf-share-ring-wrap {
+  width: 110px;
+  height: 110px;
+  flex-shrink: 0;
+}
+
+.pdf-share-legend {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 9.5px;
+}
+
+.pdf-share-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.pdf-share-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.pdf-share-legend i.institutional { background: #0c4ab8; }
+.pdf-share-legend i.retail { background: #afc1ff; }
+.pdf-share-legend i.promoter { background: #d8dfee; }
+
+.pdf-share-legend span {
+  color: #475569;
+}
+
+.pdf-share-legend strong {
+  margin-left: auto;
+  color: #1e293b;
+}
+
+/* ── Ownership Insights ────────────────────────────── */
+
+.pdf-ownership-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.pdf-ownership-table td {
+  padding: 5px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.pdf-ownership-table td:first-child {
+  color: #475569;
+  font-weight: 500;
+}
+
+.pdf-ownership-table td:nth-child(2) {
+  text-align: right;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* ── Three-Column Summary Grid ─────────────────────── */
+
+.pdf-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.pdf-summary-card {
+  padding: 14px 18px;
+  border-right: 1px solid #e2e8f0;
+}
+
+.pdf-summary-card:last-child {
+  border-right: none;
+}
+
+.pdf-summary-card h4 {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #334155;
+  margin: 0 0 10px 0;
+  padding: 5px 10px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  border-left: 3px solid #2563eb;
+  text-align: center;
+}
+
+.pdf-summary-gauge {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.pdf-summary-text {
+  font-size: 9px;
+  line-height: 1.5;
+  color: #475569;
+  margin: 0;
+}
+
+/* ── Risk Factors ──────────────────────────────────── */
+
+.pdf-risk-section {
+  padding: 14px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.pdf-risk-section h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #334155;
+  margin: 0 0 8px 0;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #ef4444;
+  display: inline-block;
+}
+
+.pdf-risk-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 20px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.pdf-risk-list li {
+  font-size: 9px;
+  line-height: 1.45;
+  color: #475569;
+  padding: 3px 0;
+  padding-left: 12px;
+  position: relative;
+}
+
+.pdf-risk-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #ef4444;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  top: 3px;
+}
+
+/* ── Footer ────────────────────────────────────────── */
+
+.pdf-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 24px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  font-size: 8px;
+  color: #94a3b8;
+}
+
+.pdf-footer-brand {
+  font-weight: 700;
+  color: #64748b;
+}
+
+.pdf-footer-disclaimer {
+  font-style: italic;
+  max-width: 400px;
+  text-align: center;
+}
