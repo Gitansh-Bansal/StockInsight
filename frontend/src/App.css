@@ -312,6 +312,57 @@
   color: #7f1d1d;
 }
 
+.auth-divider {
+  position: relative;
+  text-align: center;
+  margin: 0.15rem 0;
+}
+
+.auth-divider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--line);
+  transform: translateY(-50%);
+}
+
+.auth-divider span {
+  position: relative;
+  display: inline-block;
+  padding: 0 0.6rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  background: var(--card);
+}
+
+.auth-google {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.auth-google-button {
+  min-height: 42px;
+  display: flex;
+  justify-content: center;
+}
+
+.auth-google-hint,
+.auth-google-status {
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.83rem;
+}
+
+.auth-google-hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.78rem;
+}
+
 .auth-feature-list {
   display: grid;
   gap: 0.7rem;

@@ -147,6 +147,14 @@ export async function registerUser(input: {
   return payload.user
 }
 
+export async function loginWithGoogle(credential: string): Promise<AuthUser> {
+  const payload = await apiRequest<AuthEnvelope>('/api/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+  })
+  return payload.user
+}
+
 export async function logoutUser(): Promise<void> {
   await apiRequest('/api/auth/logout', {
     method: 'POST',

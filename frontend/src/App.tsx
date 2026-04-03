@@ -8,7 +8,7 @@ import {
 import './App.css'
 import { AuthPanel } from './components/AuthPanel'
 import { StockSearchForm } from './components/StockSearchForm'
-import { fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, logoutUser, registerUser } from './api'
+import { fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, loginWithGoogle, logoutUser, registerUser } from './api'
 import { DiscussionSection } from './components/DiscussionSection'
 import { PdfReportTemplate } from './components/PdfReportTemplate'
 import type {
@@ -147,6 +147,16 @@ function App() {
     [navigate],
   )
 
+  const handleGoogleLogin = useCallback(
+    async (credential: string) => {
+      const user = await loginWithGoogle(credential)
+      setAuthUser(user)
+      setAuthStatus('authenticated')
+      navigate('/')
+    },
+    [navigate],
+  )
+
   const handleLogout = useCallback(async () => {
     try {
       await logoutUser()
@@ -194,6 +204,7 @@ function App() {
             onAuthModeChange={openAuthPage}
             onLogin={handleLogin}
             onSignup={handleSignup}
+            onGoogleAuth={handleGoogleLogin}
           />
         ) : (
           <HomePage onSearch={handleSearch} onCompare={goCompare} user={authUser} />
@@ -724,6 +735,7 @@ type AuthPageProps = {
     password: string
     confirmPassword: string
   }) => Promise<void>
+  onGoogleAuth: (credential: string) => Promise<void>
 }
 
 function AuthPage({
@@ -731,6 +743,7 @@ function AuthPage({
   onAuthModeChange,
   onLogin,
   onSignup,
+  onGoogleAuth,
 }: AuthPageProps) {
   return (
     <section className="hero hero-grid">
@@ -752,6 +765,7 @@ function AuthPage({
         onModeChange={onAuthModeChange}
         onLogin={onLogin}
         onSignup={onSignup}
+        onGoogleAuth={onGoogleAuth}
       />
     </section>
   )

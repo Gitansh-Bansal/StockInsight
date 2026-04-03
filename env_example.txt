@@ -9,3 +9,5 @@ FINBERT_LOCAL_DIR=stockinsight-backend/.model_cache/finbert
 FINBERT_LOCAL_ONLY=false
 FINBERT_AUTO_CACHE=true
 FINNHUB_API_KEY = ""
+GOOGLE_CLIENT_ID = ""
+VITE_GOOGLE_CLIENT_ID = ""

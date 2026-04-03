@@ -1,7 +1,52 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import type { AuthMode } from '../types'
+
+type GoogleCredentialResponse = {
+  credential?: string
+}
+
+type GoogleAccountsId = {
+  initialize: (config: {
+    client_id: string
+    callback: (response: GoogleCredentialResponse) => void
+  }) => void
+  renderButton: (
+    element: HTMLElement,
+    options: {
+      theme?: 'outline' | 'filled_black' | 'filled_blue'
+      size?: 'large' | 'medium' | 'small'
+      text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin'
+      shape?: 'rectangular' | 'pill' | 'circle' | 'square'
+      width?: number
+      logo_alignment?: 'left' | 'center'
+    },
+  ) => void
+}
+
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        id?: GoogleAccountsId
+      }
+    }
+  }
+}
+
+const GOOGLE_IDENTITY_SCRIPT_ID = 'google-identity-services-script'
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
+  /\/$/,
+  '',
+)
+
+function authApiUrl(path: string): string {
+  if (apiBaseUrl) {
+    return `${apiBaseUrl}${path}`
+  }
+  return path
+}
 
 type LoginValues = {
   identifier: string
@@ -21,6 +66,7 @@ type AuthPanelProps = {
   onModeChange: (mode: AuthMode) => void
   onLogin: (values: LoginValues) => Promise<void>
   onSignup: (values: SignupValues) => Promise<void>
+  onGoogleAuth: (credential: string) => Promise<void>
 }
 
 export function AuthPanel({
@@ -29,7 +75,12 @@ export function AuthPanel({
   onModeChange,
   onLogin,
   onSignup,
+  onGoogleAuth,
 }: AuthPanelProps) {
+  const [googleClientId, setGoogleClientId] = useState(
+    () => (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ?? '',
+  )
+  const hasGoogleClientId = googleClientId.length > 0
   const [loginValues, setLoginValues] = useState<LoginValues>({
     identifier: '',
     password: '',
@@ -42,14 +93,158 @@ export function AuthPanel({
   })
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
+  const [isGoogleScriptReady, setIsGoogleScriptReady] = useState(false)
+  const googleButtonRef = useRef<HTMLDivElement | null>(null)
+  const googleAuthInFlightRef = useRef(false)
+  const isBusy = isSubmitting || isGoogleSubmitting
 
   useEffect(() => {
     setError('')
   }, [mode, notice])
 
+  useEffect(() => {
+    if (googleClientId) {
+      return
+    }
+
+    let isCancelled = false
+
+    fetch(authApiUrl('/api/auth/google/client-id'), {
+      credentials: 'include',
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return ''
+        }
+        const payload = (await response.json()) as { clientId?: unknown }
+        return typeof payload.clientId === 'string' ? payload.clientId.trim() : ''
+      })
+      .then((clientId) => {
+        if (!isCancelled && clientId) {
+          setGoogleClientId(clientId)
+        }
+      })
+      .catch(() => {
+        // Keep silent; normal login/signup remains available.
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [googleClientId])
+
+  useEffect(() => {
+    if (!hasGoogleClientId) {
+      return
+    }
+
+    let isCancelled = false
+
+    const markReady = () => {
+      if (isCancelled) {
+        return
+      }
+      setIsGoogleScriptReady(Boolean(window.google?.accounts?.id))
+    }
+
+    const handleScriptError = () => {
+      if (isCancelled) {
+        return
+      }
+      setError('Unable to load Google sign-in right now.')
+      setIsGoogleScriptReady(false)
+    }
+
+    const existingScript = document.getElementById(
+      GOOGLE_IDENTITY_SCRIPT_ID,
+    ) as HTMLScriptElement | null
+    const script = existingScript ?? document.createElement('script')
+
+    if (!existingScript) {
+      script.id = GOOGLE_IDENTITY_SCRIPT_ID
+      script.src = 'https://accounts.google.com/gsi/client'
+      script.async = true
+      script.defer = true
+      document.head.appendChild(script)
+    }
+
+    script.addEventListener('load', markReady)
+    script.addEventListener('error', handleScriptError)
+
+    markReady()
+
+    return () => {
+      isCancelled = true
+      script.removeEventListener('load', markReady)
+      script.removeEventListener('error', handleScriptError)
+    }
+  }, [hasGoogleClientId])
+
+  const handleGoogleCredential = useCallback(
+    async (response: GoogleCredentialResponse) => {
+      const credential =
+        typeof response.credential === 'string' ? response.credential.trim() : ''
+      if (!credential) {
+        setError('Google sign-in did not return a valid credential.')
+        return
+      }
+
+      if (googleAuthInFlightRef.current || isSubmitting) {
+        return
+      }
+
+      googleAuthInFlightRef.current = true
+      setError('')
+      setIsGoogleSubmitting(true)
+      try {
+        await onGoogleAuth(credential)
+      } catch (submitError: unknown) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : 'Unable to sign in with Google right now.',
+        )
+      } finally {
+        googleAuthInFlightRef.current = false
+        setIsGoogleSubmitting(false)
+      }
+    },
+    [isSubmitting, onGoogleAuth],
+  )
+
+  useEffect(() => {
+    if (!hasGoogleClientId || !isGoogleScriptReady || !googleButtonRef.current) {
+      return
+    }
+
+    const googleAccounts = window.google?.accounts?.id
+    if (!googleAccounts) {
+      return
+    }
+
+    googleAccounts.initialize({
+      client_id: googleClientId,
+      callback: handleGoogleCredential,
+    })
+    googleButtonRef.current.innerHTML = ''
+    const availableWidth = Math.floor(
+      googleButtonRef.current.getBoundingClientRect().width || 330,
+    )
+    const buttonWidth = Math.max(220, Math.min(330, availableWidth))
+    googleAccounts.renderButton(googleButtonRef.current, {
+      theme: 'outline',
+      size: 'large',
+      text: mode === 'signup' ? 'signup_with' : 'continue_with',
+      shape: 'pill',
+      width: buttonWidth,
+      logo_alignment: 'left',
+    })
+  }, [googleClientId, handleGoogleCredential, hasGoogleClientId, isGoogleScriptReady, mode])
+
   const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (isSubmitting) {
+    if (isBusy) {
       return
     }
 
@@ -71,7 +266,7 @@ export function AuthPanel({
 
   const handleSignupSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (isSubmitting) {
+    if (isBusy) {
       return
     }
 
@@ -147,6 +342,7 @@ export function AuthPanel({
               }
               autoComplete="username"
               placeholder="jane_doe or jane@example.com"
+              disabled={isBusy}
             />
           </label>
           <label className="auth-field">
@@ -162,9 +358,10 @@ export function AuthPanel({
               }
               autoComplete="current-password"
               placeholder="Enter your password"
+              disabled={isBusy}
             />
           </label>
-          <button type="submit" disabled={isSubmitting}>
+          <button type="submit" disabled={isBusy}>
             {isSubmitting ? 'Logging In...' : 'Log In'}
           </button>
         </form>
@@ -182,6 +379,7 @@ export function AuthPanel({
               }
               autoComplete="username"
               placeholder="Choose a username"
+              disabled={isBusy}
             />
           </label>
           <label className="auth-field">
@@ -197,6 +395,7 @@ export function AuthPanel({
               }
               autoComplete="email"
               placeholder="name@example.com"
+              disabled={isBusy}
             />
           </label>
           <label className="auth-field">
@@ -212,6 +411,7 @@ export function AuthPanel({
               }
               autoComplete="new-password"
               placeholder="Create a password"
+              disabled={isBusy}
             />
           </label>
           <label className="auth-field">
@@ -227,13 +427,37 @@ export function AuthPanel({
               }
               autoComplete="new-password"
               placeholder="Repeat your password"
+              disabled={isBusy}
             />
           </label>
-          <button type="submit" disabled={isSubmitting}>
+          <button type="submit" disabled={isBusy}>
             {isSubmitting ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
       )}
+
+      <div className="auth-divider" aria-hidden="true">
+        <span>or</span>
+      </div>
+
+      <div className="auth-google">
+        {!hasGoogleClientId ? (
+          <p className="auth-google-hint">
+            Google sign-in is disabled. Set <code>GOOGLE_CLIENT_ID</code> on backend
+            (or <code>VITE_GOOGLE_CLIENT_ID</code> in frontend) to enable it.
+          </p>
+        ) : (
+          <>
+            <div className="auth-google-button" ref={googleButtonRef} />
+            {!isGoogleScriptReady && (
+              <p className="auth-google-hint">Loading Google sign-in...</p>
+            )}
+          </>
+        )}
+        {isGoogleSubmitting && (
+          <p className="auth-google-status">Signing in with Google...</p>
+        )}
+      </div>
     </aside>
   )
 }
