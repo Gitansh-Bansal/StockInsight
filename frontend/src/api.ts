@@ -113,10 +113,32 @@ type AuthEnvelope = {
   user: AuthUser
 }
 
+type GoogleAuthEnvelope =
+  | {
+      requiresCompletion: true
+      email: string
+      suggestedUsername: string
+    }
+  | {
+      requiresCompletion?: false
+      user: AuthUser
+    }
+
 type CurrentUserEnvelope = {
   authenticated: boolean
   user: AuthUser | null
 }
+
+export type GoogleAuthResult =
+  | {
+      status: 'needs_completion'
+      email: string
+      suggestedUsername: string
+    }
+  | {
+      status: 'authenticated'
+      user: AuthUser
+    }
 
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
   const payload = await apiRequest<CurrentUserEnvelope>('/api/auth/me')
@@ -147,10 +169,35 @@ export async function registerUser(input: {
   return payload.user
 }
 
-export async function loginWithGoogle(credential: string): Promise<AuthUser> {
-  const payload = await apiRequest<AuthEnvelope>('/api/auth/google', {
+export async function loginWithGoogle(
+  credential: string,
+  mode: 'login' | 'signup',
+): Promise<GoogleAuthResult> {
+  const payload = await apiRequest<GoogleAuthEnvelope>('/api/auth/google', {
     method: 'POST',
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify({ credential, mode }),
+  })
+  if (payload.requiresCompletion) {
+    return {
+      status: 'needs_completion',
+      email: payload.email,
+      suggestedUsername: payload.suggestedUsername,
+    }
+  }
+  return {
+    status: 'authenticated',
+    user: payload.user,
+  }
+}
+
+export async function completeGoogleSignup(input: {
+  username: string
+  password: string
+  confirmPassword: string
+}): Promise<AuthUser> {
+  const payload = await apiRequest<AuthEnvelope>('/api/auth/google/complete', {
+    method: 'POST',
+    body: JSON.stringify(input),
   })
   return payload.user
 }

@@ -8,7 +8,8 @@ import {
 import './App.css'
 import { AuthPanel } from './components/AuthPanel'
 import { StockSearchForm } from './components/StockSearchForm'
-import { fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, loginWithGoogle, logoutUser, registerUser } from './api'
+import { completeGoogleSignup, fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, loginWithGoogle, logoutUser, registerUser } from './api'
+import type { GoogleAuthResult } from './api'
 import { DiscussionSection } from './components/DiscussionSection'
 import { PdfReportTemplate } from './components/PdfReportTemplate'
 import type {
@@ -148,8 +149,25 @@ function App() {
   )
 
   const handleGoogleLogin = useCallback(
-    async (credential: string) => {
-      const user = await loginWithGoogle(credential)
+    async (credential: string, mode: AuthMode): Promise<GoogleAuthResult> => {
+      const result = await loginWithGoogle(credential, mode)
+      if (result.status === 'authenticated') {
+        setAuthUser(result.user)
+        setAuthStatus('authenticated')
+        navigate('/')
+      }
+      return result
+    },
+    [navigate],
+  )
+
+  const handleGoogleSignupCompletion = useCallback(
+    async (values: {
+      username: string
+      password: string
+      confirmPassword: string
+    }) => {
+      const user = await completeGoogleSignup(values)
       setAuthUser(user)
       setAuthStatus('authenticated')
       navigate('/')
@@ -205,6 +223,7 @@ function App() {
             onLogin={handleLogin}
             onSignup={handleSignup}
             onGoogleAuth={handleGoogleLogin}
+            onCompleteGoogleSignup={handleGoogleSignupCompletion}
           />
         ) : (
           <HomePage onSearch={handleSearch} onCompare={goCompare} user={authUser} />
@@ -735,7 +754,12 @@ type AuthPageProps = {
     password: string
     confirmPassword: string
   }) => Promise<void>
-  onGoogleAuth: (credential: string) => Promise<void>
+  onGoogleAuth: (credential: string, mode: AuthMode) => Promise<GoogleAuthResult>
+  onCompleteGoogleSignup: (values: {
+    username: string
+    password: string
+    confirmPassword: string
+  }) => Promise<void>
 }
 
 function AuthPage({
@@ -744,6 +768,7 @@ function AuthPage({
   onLogin,
   onSignup,
   onGoogleAuth,
+  onCompleteGoogleSignup,
 }: AuthPageProps) {
   return (
     <section className="hero hero-grid">
@@ -766,6 +791,7 @@ function AuthPage({
         onLogin={onLogin}
         onSignup={onSignup}
         onGoogleAuth={onGoogleAuth}
+        onCompleteGoogleSignup={onCompleteGoogleSignup}
       />
     </section>
   )

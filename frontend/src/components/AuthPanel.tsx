@@ -25,6 +25,16 @@ type GoogleAccountsId = {
   ) => void
 }
 
+type GoogleAuthResult =
+  | {
+      status: 'needs_completion'
+      email: string
+      suggestedUsername: string
+    }
+  | {
+      status: 'authenticated'
+    }
+
 declare global {
   interface Window {
     google?: {
@@ -60,13 +70,20 @@ type SignupValues = {
   confirmPassword: string
 }
 
+type GoogleCompletionValues = {
+  username: string
+  password: string
+  confirmPassword: string
+}
+
 type AuthPanelProps = {
   mode: AuthMode
   notice?: string
   onModeChange: (mode: AuthMode) => void
   onLogin: (values: LoginValues) => Promise<void>
   onSignup: (values: SignupValues) => Promise<void>
-  onGoogleAuth: (credential: string) => Promise<void>
+  onGoogleAuth: (credential: string, mode: AuthMode) => Promise<GoogleAuthResult>
+  onCompleteGoogleSignup: (values: GoogleCompletionValues) => Promise<void>
 }
 
 export function AuthPanel({
@@ -76,6 +93,7 @@ export function AuthPanel({
   onLogin,
   onSignup,
   onGoogleAuth,
+  onCompleteGoogleSignup,
 }: AuthPanelProps) {
   const [googleClientId, setGoogleClientId] = useState(
     () => (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ?? '',
@@ -91,17 +109,38 @@ export function AuthPanel({
     password: '',
     confirmPassword: '',
   })
+  const [googleCompletion, setGoogleCompletion] = useState<{
+    email: string
+    suggestedUsername: string
+  } | null>(null)
+  const [googleCompletionValues, setGoogleCompletionValues] =
+    useState<GoogleCompletionValues>({
+      username: '',
+      password: '',
+      confirmPassword: '',
+    })
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
+  const [isCompletingGoogleSignup, setIsCompletingGoogleSignup] = useState(false)
   const [isGoogleScriptReady, setIsGoogleScriptReady] = useState(false)
   const googleButtonRef = useRef<HTMLDivElement | null>(null)
   const googleAuthInFlightRef = useRef(false)
-  const isBusy = isSubmitting || isGoogleSubmitting
+  const isCompleting = googleCompletion !== null
+  const isBusy = isSubmitting || isGoogleSubmitting || isCompletingGoogleSignup
 
   useEffect(() => {
     setError('')
   }, [mode, notice])
+
+  useEffect(() => {
+    setGoogleCompletion(null)
+    setGoogleCompletionValues({
+      username: '',
+      password: '',
+      confirmPassword: '',
+    })
+  }, [mode])
 
   useEffect(() => {
     if (googleClientId) {
@@ -190,7 +229,7 @@ export function AuthPanel({
         return
       }
 
-      if (googleAuthInFlightRef.current || isSubmitting) {
+      if (googleAuthInFlightRef.current || isSubmitting || isCompletingGoogleSignup) {
         return
       }
 
@@ -198,7 +237,18 @@ export function AuthPanel({
       setError('')
       setIsGoogleSubmitting(true)
       try {
-        await onGoogleAuth(credential)
+        const result = await onGoogleAuth(credential, mode)
+        if (result.status === 'needs_completion') {
+          setGoogleCompletion({
+            email: result.email,
+            suggestedUsername: result.suggestedUsername,
+          })
+          setGoogleCompletionValues({
+            username: result.suggestedUsername,
+            password: '',
+            confirmPassword: '',
+          })
+        }
       } catch (submitError: unknown) {
         setError(
           submitError instanceof Error
@@ -210,11 +260,11 @@ export function AuthPanel({
         setIsGoogleSubmitting(false)
       }
     },
-    [isSubmitting, onGoogleAuth],
+    [isCompletingGoogleSignup, isSubmitting, mode, onGoogleAuth],
   )
 
   useEffect(() => {
-    if (!hasGoogleClientId || !isGoogleScriptReady || !googleButtonRef.current) {
+    if (isCompleting || !hasGoogleClientId || !isGoogleScriptReady || !googleButtonRef.current) {
       return
     }
 
@@ -240,7 +290,14 @@ export function AuthPanel({
       width: buttonWidth,
       logo_alignment: 'left',
     })
-  }, [googleClientId, handleGoogleCredential, hasGoogleClientId, isGoogleScriptReady, mode])
+  }, [
+    googleClientId,
+    handleGoogleCredential,
+    hasGoogleClientId,
+    isCompleting,
+    isGoogleScriptReady,
+    mode,
+  ])
 
   const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -296,39 +353,137 @@ export function AuthPanel({
     }
   }
 
+  const handleGoogleCompletionSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (isBusy) {
+      return
+    }
+
+    if (googleCompletionValues.password !== googleCompletionValues.confirmPassword) {
+      setError('Password confirmation does not match.')
+      return
+    }
+
+    setError('')
+    setIsCompletingGoogleSignup(true)
+    try {
+      await onCompleteGoogleSignup(googleCompletionValues)
+      setGoogleCompletion(null)
+      setGoogleCompletionValues({
+        username: '',
+        password: '',
+        confirmPassword: '',
+      })
+    } catch (submitError: unknown) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : 'Unable to finish your account setup right now.',
+      )
+    } finally {
+      setIsCompletingGoogleSignup(false)
+    }
+  }
+
   return (
     <aside className="auth-card">
       <div className="auth-card-header">
         <p className="kicker">Session Access</p>
-        <h2>{mode === 'login' ? 'Log in to continue' : 'Create your account'}</h2>
+        <h2>
+          {isCompleting
+            ? 'Finish your account'
+            : mode === 'login'
+              ? 'Log in to continue'
+              : 'Create your account'}
+        </h2>
         <p className="auth-copy">
-          {mode === 'login'
-            ? 'Use your username or email to unlock stock analysis.'
-            : 'Create a secure account to access the analysis workspace.'}
+          {isCompleting
+            ? 'Choose your StockInsight username and password to complete Google sign-up.'
+            : mode === 'login'
+              ? 'Use your username or email to unlock stock analysis.'
+              : 'Create a secure account to access the analysis workspace.'}
         </p>
       </div>
 
-      <div className="auth-tabs" role="tablist" aria-label="Authentication options">
-        <button
-          type="button"
-          className={mode === 'login' ? 'active' : ''}
-          onClick={() => onModeChange('login')}
-        >
-          Log In
-        </button>
-        <button
-          type="button"
-          className={mode === 'signup' ? 'active' : ''}
-          onClick={() => onModeChange('signup')}
-        >
-          Create Account
-        </button>
-      </div>
+      {!isCompleting && (
+        <div className="auth-tabs" role="tablist" aria-label="Authentication options">
+          <button
+            type="button"
+            className={mode === 'login' ? 'active' : ''}
+            onClick={() => onModeChange('login')}
+          >
+            Log In
+          </button>
+          <button
+            type="button"
+            className={mode === 'signup' ? 'active' : ''}
+            onClick={() => onModeChange('signup')}
+          >
+            Create Account
+          </button>
+        </div>
+      )}
 
-      {notice && <p className="auth-notice">{notice}</p>}
+      {notice && !isCompleting && <p className="auth-notice">{notice}</p>}
       {error && <p className="auth-error">{error}</p>}
 
-      {mode === 'login' ? (
+      {isCompleting ? (
+        <form className="auth-form" onSubmit={handleGoogleCompletionSubmit}>
+          <p className="auth-helper-text">
+            Google verified email: <strong>{googleCompletion?.email ?? ''}</strong>
+          </p>
+          <label className="auth-field">
+            <span>Username</span>
+            <input
+              value={googleCompletionValues.username}
+              onChange={(event) =>
+                setGoogleCompletionValues((current) => ({
+                  ...current,
+                  username: event.target.value,
+                }))
+              }
+              autoComplete="username"
+              placeholder="Choose a username"
+              disabled={isBusy}
+            />
+          </label>
+          <label className="auth-field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={googleCompletionValues.password}
+              onChange={(event) =>
+                setGoogleCompletionValues((current) => ({
+                  ...current,
+                  password: event.target.value,
+                }))
+              }
+              autoComplete="new-password"
+              placeholder="Create a password"
+              disabled={isBusy}
+            />
+          </label>
+          <label className="auth-field">
+            <span>Confirm password</span>
+            <input
+              type="password"
+              value={googleCompletionValues.confirmPassword}
+              onChange={(event) =>
+                setGoogleCompletionValues((current) => ({
+                  ...current,
+                  confirmPassword: event.target.value,
+                }))
+              }
+              autoComplete="new-password"
+              placeholder="Repeat your password"
+              disabled={isBusy}
+            />
+          </label>
+          <button type="submit" disabled={isBusy}>
+            {isCompletingGoogleSignup ? 'Finishing...' : 'Finish Account'}
+          </button>
+        </form>
+      ) : mode === 'login' ? (
         <form className="auth-form" onSubmit={handleLoginSubmit}>
           <label className="auth-field">
             <span>Username or email</span>
@@ -436,28 +591,32 @@ export function AuthPanel({
         </form>
       )}
 
-      <div className="auth-divider" aria-hidden="true">
-        <span>or</span>
-      </div>
+      {!isCompleting && (
+        <>
+          <div className="auth-divider" aria-hidden="true">
+            <span>or</span>
+          </div>
 
-      <div className="auth-google">
-        {!hasGoogleClientId ? (
-          <p className="auth-google-hint">
-            Google sign-in is disabled. Set <code>GOOGLE_CLIENT_ID</code> on backend
-            (or <code>VITE_GOOGLE_CLIENT_ID</code> in frontend) to enable it.
-          </p>
-        ) : (
-          <>
-            <div className="auth-google-button" ref={googleButtonRef} />
-            {!isGoogleScriptReady && (
-              <p className="auth-google-hint">Loading Google sign-in...</p>
+          <div className="auth-google">
+            {!hasGoogleClientId ? (
+              <p className="auth-google-hint">
+                Google sign-in is disabled. Set <code>GOOGLE_CLIENT_ID</code> on backend
+                (or <code>VITE_GOOGLE_CLIENT_ID</code> in frontend) to enable it.
+              </p>
+            ) : (
+              <>
+                <div className="auth-google-button" ref={googleButtonRef} />
+                {!isGoogleScriptReady && (
+                  <p className="auth-google-hint">Loading Google sign-in...</p>
+                )}
+              </>
             )}
-          </>
-        )}
-        {isGoogleSubmitting && (
-          <p className="auth-google-status">Signing in with Google...</p>
-        )}
-      </div>
+            {isGoogleSubmitting && (
+              <p className="auth-google-status">Signing in with Google...</p>
+            )}
+          </div>
+        </>
+      )}
     </aside>
   )
 }
