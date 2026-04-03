@@ -192,6 +192,7 @@ function App() {
         authStatus={authStatus}
         isAuthenticated={authStatus === 'authenticated'}
         showSearch={route.type === 'stock'}
+        isCompareRoute={route.type === 'compare'}
         user={authUser}
         initialSearch={activeTicker ?? ''}
         onAuthModeChange={openAuthPage}
@@ -237,6 +238,7 @@ type HeaderBarProps = {
   authStatus: AuthStatus
   isAuthenticated: boolean
   initialSearch: string
+  isCompareRoute: boolean
   onAuthModeChange: (mode: AuthMode) => void
   onLogout: () => void
   onSearch: (ticker: string) => void
@@ -250,6 +252,7 @@ function HeaderBar({
   authStatus,
   isAuthenticated,
   initialSearch,
+  isCompareRoute,
   onAuthModeChange,
   onLogout,
   onSearch,
@@ -301,8 +304,12 @@ function HeaderBar({
         <div className="top-search-placeholder" aria-hidden="true" />
       )}
       <div className="top-actions">
-        <button type="button" className="compare-nav-btn" onClick={onCompare}>
-          Compare
+        <button
+          type="button"
+          className="compare-nav-btn"
+          onClick={isCompareRoute ? onHome : onCompare}
+        >
+          {isCompareRoute ? 'Search Ticker' : 'Compare'}
         </button>
         {authStatus === 'loading' ? (
           <span className="session-chip">Restoring session...</span>
@@ -341,59 +348,26 @@ type HomePageProps = {
 }
 
 function HomePage({ onSearch, onCompare, user }: HomePageProps) {
-  if (user) {
-    return (
-      <section className="hero">
-        <div className="hero-single">
-          <p className="kicker">Live equity intelligence workspace</p>
-          <h1>StockInsight</h1>
-          <p>
-            Welcome back, {user.username}. Search any company or ticker to open
-            structured analysis sections for overall, fundamental, technical, and
-            sentiment views.
-          </p>
-          <h2>Start With A Company Or Ticker</h2>
-          <StockSearchForm
-            className="hero-search"
-            onSearch={onSearch}
-            placeholder="Enter a company name or ticker"
-            ariaLabel="Search for a company or ticker"
-            buttonLabel="Open Analysis"
-          />
-          <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
-          <div className="hero-compare-cta">
-            <span className="hero-divider-text">or</span>
-            <button type="button" className="compare-cta-btn" onClick={onCompare}>
-              Compare Multiple Stocks
-            </button>
-          </div>
-        </div>
-      </section>
-    )
-  }
+  const greeting = user
+    ? `Welcome back, ${user.username}. `
+    : ''
 
   return (
     <section className="hero">
       <div className="hero-single">
-        <p className="kicker">Live equity intelligence workspace</p>
+        <div className="hero-single-bg" aria-hidden="true" />
         <h1>StockInsight</h1>
-        <p>
-          Search any company or ticker to open structured analysis sections for overall,
-          fundamental, technical, and sentiment views.
-        </p>
-        <h2>Start With A Company Or Ticker</h2>
+        {greeting && <p>{greeting}</p>}
         <StockSearchForm
           className="hero-search"
           onSearch={onSearch}
-          placeholder="Enter a company name or ticker"
+          placeholder="e.g. AAPL, TSLA, Microsoft..."
           ariaLabel="Search for a company or ticker"
-          buttonLabel="Open Analysis"
+          buttonLabel="Analyze"
         />
-        <p>Examples: Apple, Microsoft, AAPL, TSLA, META.</p>
         <div className="hero-compare-cta">
-          <span className="hero-divider-text">or</span>
           <button type="button" className="compare-cta-btn" onClick={onCompare}>
-            Compare Multiple Stocks
+            Compare Multiple Stocks →
           </button>
         </div>
       </div>
@@ -517,27 +491,25 @@ function ComparePage() {
   return (
     <section className="compare-page">
       <div className="compare-header reveal">
-        <p className="kicker">Side-by-Side Analysis</p>
         <h1>Compare Stocks</h1>
-        <p>Add up to 10 tickers and run a full parallel analysis to compare them.</p>
-      </div>
 
-      <div className="compare-input-area reveal">
-        <div className="compare-ticker-chips">
-          {tickers.map((t) => (
-            <span key={t} className="compare-chip">
-              {t}
-              <button
-                type="button"
-                className="compare-chip-remove"
-                onClick={() => removeTicker(t)}
-                aria-label={`Remove ${t}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
+        {tickers.length > 0 && (
+          <div className="compare-ticker-chips">
+            {tickers.map((t) => (
+              <span key={t} className="compare-chip">
+                {t}
+                <button
+                  type="button"
+                  className="compare-chip-remove"
+                  onClick={() => removeTicker(t)}
+                  aria-label={`Remove ${t}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="compare-input-row">
           <StockSearchForm
             className="compare-search"
@@ -1337,6 +1309,17 @@ function FundamentalSection({
   llmSummary,
   displayCurrency,
 }: FundamentalSectionProps) {
+  const revRef = useRef<HTMLDivElement | null>(null)
+  const isRevInView = useInViewOnce(revRef, { threshold: 0, rootMargin: '100px 0px' })
+  
+  const cashRef = useRef<HTMLDivElement | null>(null)
+  const isCashInView = useInViewOnce(cashRef, { threshold: 0, rootMargin: '100px 0px' })
+  
+  const shareRef = useRef<HTMLDivElement | null>(null)
+  const isShareInView = useInViewOnce(shareRef, { threshold: 0, rootMargin: '100px 0px' })
+  
+  const marginRef = useRef<HTMLDivElement | null>(null)
+  const isMarginInView = useInViewOnce(marginRef, { threshold: 0, rootMargin: '100px 0px' })
   if (!result) {
     return (
       <UnavailablePanel title="Fundamental Analysis">
@@ -1617,11 +1600,12 @@ function FundamentalSection({
 
       <div className="charts-grid">
         {data.revenueTrend && data.revenueTrend.length > 0 && (
-          <div className="chart-card">
+          <div className={`chart-card${isRevInView ? ' is-animated' : ''}`} ref={revRef}>
             <h3>Revenue & Net Profit</h3>
             <div className="recharts-wrapper">
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={data.revenueTrend}>
+                {isRevInView ? (
+                  <BarChart data={data.revenueTrend}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                   <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={60} />
@@ -1630,18 +1614,20 @@ function FundamentalSection({
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                   <Bar dataKey="revenue" name="Revenue" fill="#94a3b8" radius={[4,4,0,0]} />
                   <Bar dataKey="netProfit" name="Net Profit" fill="#2563eb" radius={[4,4,0,0]} />
-                </BarChart>
+                  </BarChart>
+                ) : <div style={{ height: '100%' }} />}
               </ResponsiveContainer>
             </div>
           </div>
         )}
 
         {data.cashflowTrend && data.cashflowTrend.length > 0 && (
-          <div className="chart-card">
+          <div className={`chart-card${isCashInView ? ' is-animated' : ''}`} ref={cashRef}>
             <h3>Cash Flow Breakdown</h3>
             <div className="recharts-wrapper">
               <ResponsiveContainer width="100%" height={250}>
-                <AreaChart data={data.cashflowTrend}>
+                {isCashInView ? (
+                  <AreaChart data={data.cashflowTrend}>
                   <defs>
                     <linearGradient id="colorOp" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#2563eb" stopOpacity={0.8}/>
@@ -1660,7 +1646,8 @@ function FundamentalSection({
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                   <Area type="monotone" dataKey="operatingCashFlow" name="Op Cash Flow" stroke="#2563eb" fillOpacity={1} fill="url(#colorOp)" stackId="1" />
                   <Area type="monotone" dataKey="freeCashFlow" name="Free Cash Flow" stroke="#10b981" fillOpacity={1} fill="url(#colorFcf)" stackId="1" />
-                </AreaChart>
+                  </AreaChart>
+                ) : <div style={{ height: '100%' }} />}
               </ResponsiveContainer>
             </div>
           </div>
@@ -1675,11 +1662,12 @@ function FundamentalSection({
           ].filter(d => d.value > 0)
 
           return (
-            <div className="chart-card">
+            <div className={`chart-card${isShareInView ? ' is-animated' : ''}`} ref={shareRef}>
               <h3>Shareholding Pattern</h3>
               <div className="recharts-wrapper">
                 <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
+                  {isShareInView ? (
+                    <PieChart>
                     <Pie
                       data={pieData}
                       cx="50%"
@@ -1697,7 +1685,8 @@ function FundamentalSection({
                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(1)}%`} />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
-                  </PieChart>
+                    </PieChart>
+                  ) : <div style={{ height: '100%' }} />}
                 </ResponsiveContainer>
               </div>
             </div>
@@ -1705,11 +1694,12 @@ function FundamentalSection({
         })()}
 
         {data.marginsTrend && data.marginsTrend.length > 0 && (
-          <div className="chart-card">
+          <div className={`chart-card${isMarginInView ? ' is-animated' : ''}`} ref={marginRef}>
             <h3>Margins History</h3>
             <div className="recharts-wrapper">
               <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={data.marginsTrend}>
+                {isMarginInView ? (
+                  <LineChart data={data.marginsTrend}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                   <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={(val) => `${(val * 100).toFixed(0)}%`} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={45} />
@@ -1718,7 +1708,8 @@ function FundamentalSection({
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                   <Line type="monotone" dataKey="operatingMargin" name="Operating Margin" stroke="#2563eb" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
                   <Line type="monotone" dataKey="netMargin" name="Net Margin" stroke="#10b981" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
-                </LineChart>
+                  </LineChart>
+                ) : <div style={{ height: '100%' }} />}
               </ResponsiveContainer>
             </div>
           </div>
@@ -1992,6 +1983,8 @@ function TechnicalSection({
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const chartShellRef = useRef<HTMLDivElement | null>(null)
   const snapshotSectionRef = useRef<HTMLElement | null>(null)
+  const priceLevelsRef = useRef<HTMLElement | null>(null)
+  const indicatorTrendsRef = useRef<HTMLElement | null>(null)
   const [chartType, setChartType] = useState<ChartType>('candle')
   const [chartDuration, setChartDuration] = useState<string>('1M')
   const [chartData, setChartData] = useState<any[]>([])
@@ -2000,8 +1993,10 @@ function TechnicalSection({
   const [chartFetchError, setChartFetchError] = useState('')
   const [isChartReady, setIsChartReady] = useState(false)
   const [showPriceRangeMarkers, setShowPriceRangeMarkers] = useState(false)
-  const isChartInView = useInViewOnce(chartShellRef, { threshold: 0.2 })
-  const isSnapshotInView = useInViewOnce(snapshotSectionRef, { threshold: 0.2 })
+  const isChartInView = useInViewOnce(chartShellRef, { threshold: 0.1 })
+  const isSnapshotInView = useInViewOnce(snapshotSectionRef, { threshold: 0.05 })
+  const isPriceLevelsInView = useInViewOnce(priceLevelsRef, { threshold: 0.05 })
+  const isIndicatorTrendsInView = useInViewOnce(indicatorTrendsRef, { threshold: 0.05 })
   const activeChartRows = useMemo(
     () => (chartData.length > 0 ? chartData : (data.ohlcv ?? [])),
     [chartData, data.ohlcv],
@@ -2071,7 +2066,7 @@ function TechnicalSection({
 
   useEffect(() => {
     setShowPriceRangeMarkers(false)
-    if (!isSnapshotInView || priceRangeMarkers.length === 0) {
+    if (!isPriceLevelsInView || priceRangeMarkers.length === 0) {
       return
     }
 
@@ -2079,7 +2074,7 @@ function TechnicalSection({
       setShowPriceRangeMarkers(true)
     })
     return () => cancelAnimationFrame(frame)
-  }, [isSnapshotInView, priceMarkerAnimationKey])
+  }, [isPriceLevelsInView, priceMarkerAnimationKey])
 
   // Fetch fine-grained chart data when duration changes
   useEffect(() => {
@@ -2449,7 +2444,7 @@ function TechnicalSection({
             </div>
           </article>
 
-          <article className="snapshot-panel">
+          <article className="snapshot-panel" ref={priceLevelsRef}>
             <header className="snapshot-panel-head">
               <h4>Price Levels</h4>
             </header>
@@ -2499,8 +2494,12 @@ function TechnicalSection({
                 ))}
               </div>
               <div className="price-range-cards">
-                {priceLadderRows.map((row) => (
-                  <article key={row.key} className={`price-range-card kind-${row.kind}`}>
+                {priceLadderRows.map((row, index) => (
+                  <article 
+                    key={row.key} 
+                    className={`price-range-card kind-${row.kind}${isPriceLevelsInView ? ' is-animated' : ''}`}
+                    style={isPriceLevelsInView ? { animationDelay: `${index * 30 + 50}ms` } : undefined}
+                  >
                     <div className="price-range-card-head">
                       <span>{row.label}</span>
                       <strong>{formatCurrency(row.value, technicalCurrency)}</strong>
@@ -2512,20 +2511,24 @@ function TechnicalSection({
             </div>
           </article>
 
-          <article className="snapshot-panel">
+          <article className="snapshot-panel" ref={indicatorTrendsRef}>
             <header className="snapshot-panel-head">
               <h4>Indicator Trends</h4>
             </header>
             <div className="indicator-dashboard-grid">
-              {indicatorMiniCharts.map((chart) => (
-                <article key={chart.key} className="indicator-mini-chart">
+              {indicatorMiniCharts.map((chart, index) => (
+                <article 
+                  key={chart.key} 
+                  className={`indicator-mini-chart${isIndicatorTrendsInView ? ' is-animated' : ''}`}
+                  style={isIndicatorTrendsInView ? { animationDelay: `${index * 30 + 50}ms` } : undefined}
+                >
                   <header className="indicator-mini-head">
                     <h5>{chart.title}</h5>
                     <strong>{chart.currentValueLabel}</strong>
                   </header>
                   <div className="indicator-mini-body">
                     {chart.series.length > 0 ? (
-                      <IndicatorMiniSparkline chart={chart} isAnimated={isSnapshotInView} />
+                      <IndicatorMiniSparkline chart={chart} isAnimated={isIndicatorTrendsInView} />
                     ) : (
                       <div className="indicator-mini-empty">No data</div>
                     )}
@@ -2819,8 +2822,8 @@ function SnapshotMetricTile({
 
   return (
     <article
-      className={`snapshot-tile tone-${tile.tone}${isAnimated ? ' snapshot-tile-enter' : ''}`}
-      style={isAnimated ? { animationDelay: `${80 + index * 45}ms` } : undefined}
+      className={`snapshot-tile tone-${tile.tone}${isAnimated ? ' is-animated' : ''}`}
+      style={isAnimated ? { animationDelay: `${index * 30}ms` } : undefined}
     >
       <p className="snapshot-tile-label">{tile.metric}</p>
       <div className="snapshot-tile-value-row">
@@ -2853,7 +2856,7 @@ function IndicatorMiniSparkline({
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={chart.series} margin={{ top: 8, right: 2, left: 2, bottom: 6 }}>
+      <AreaChart key={isAnimated ? 'active' : 'idle'} data={chart.series} margin={{ top: 8, right: 2, left: 2, bottom: 6 }}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={chart.stroke} stopOpacity={0.35} />
@@ -2873,7 +2876,7 @@ function IndicatorMiniSparkline({
           strokeWidth={2}
           fill={`url(#${gradientId})`}
           isAnimationActive={isAnimated}
-          animationDuration={1400}
+          animationDuration={1800}
           animationEasing="ease-in-out"
           dot={(dotProps) => (
             <IndicatorMiniPoint dotProps={dotProps} stroke={chart.stroke} isAnimated={isAnimated} />

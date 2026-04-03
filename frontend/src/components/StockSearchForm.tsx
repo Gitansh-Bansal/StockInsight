@@ -130,27 +130,9 @@ export function StockSearchForm({
       return exactSuggestion
     }
 
-    if (!looksLikeTickerInput(trimmed) && suggestions[0]) {
-      return suggestions[0]
-    }
-
-    if (looksLikeTickerInput(trimmed)) {
-      const ticker = normalizeTicker(trimmed)
-      if (ticker) {
-        return { ticker, name: ticker }
-      }
-    }
-
     const freshSuggestions = await fetchSearchSuggestions(trimmed, 1)
-    if (freshSuggestions[0]) {
+    if (freshSuggestions[0]?.ticker.toLowerCase() === lowerQuery) {
       return freshSuggestions[0]
-    }
-
-    if (looksLikeTickerInput(trimmed)) {
-      const ticker = normalizeTicker(trimmed)
-      if (ticker) {
-        return { ticker, name: ticker }
-      }
     }
 
     return null
@@ -168,12 +150,18 @@ export function StockSearchForm({
     try {
       const target = await resolveSearchTarget()
       if (!target?.ticker) {
-        setSubmitError('No matching company or ticker found.')
+        setSubmitError('Ticker not found')
+        window.setTimeout(() => {
+          setSubmitError('')
+        }, 2200)
         return
       }
       chooseSuggestion(target)
     } catch {
-      setSubmitError('Search is unavailable right now. Please try again.')
+      setSubmitError('Search error')
+      window.setTimeout(() => {
+        setSubmitError('')
+      }, 2200)
     } finally {
       setIsSubmitting(false)
     }
@@ -308,12 +296,4 @@ export function StockSearchForm({
       </button>
     </form>
   )
-}
-
-function normalizeTicker(input: string): string {
-  return input.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, '')
-}
-
-function looksLikeTickerInput(input: string): boolean {
-  return /^[A-Za-z0-9.-]+$/.test(input.trim())
 }

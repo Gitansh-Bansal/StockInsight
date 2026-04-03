@@ -388,21 +388,13 @@ export function AuthPanel({
   return (
     <aside className="auth-card">
       <div className="auth-card-header">
-        <p className="kicker">Session Access</p>
         <h2>
           {isCompleting
             ? 'Finish your account'
             : mode === 'login'
-              ? 'Log in to continue'
-              : 'Create your account'}
+              ? 'Log In'
+              : 'Create Account'}
         </h2>
-        <p className="auth-copy">
-          {isCompleting
-            ? 'Choose your StockInsight username and password to complete Google sign-up.'
-            : mode === 'login'
-              ? 'Use your username or email to unlock stock analysis.'
-              : 'Create a secure account to access the analysis workspace.'}
-        </p>
       </div>
 
       {!isCompleting && (
@@ -591,25 +583,16 @@ export function AuthPanel({
         </form>
       )}
 
-      {!isCompleting && (
+      {!isCompleting && hasGoogleClientId && (
         <>
           <div className="auth-divider" aria-hidden="true">
             <span>or</span>
           </div>
 
           <div className="auth-google">
-            {!hasGoogleClientId ? (
-              <p className="auth-google-hint">
-                Google sign-in is disabled. Set <code>GOOGLE_CLIENT_ID</code> on backend
-                (or <code>VITE_GOOGLE_CLIENT_ID</code> in frontend) to enable it.
-              </p>
-            ) : (
-              <>
-                <div className="auth-google-button" ref={googleButtonRef} />
-                {!isGoogleScriptReady && (
-                  <p className="auth-google-hint">Loading Google sign-in...</p>
-                )}
-              </>
+            <div className="auth-google-button" ref={googleButtonRef} />
+            {!isGoogleScriptReady && (
+              <p className="auth-google-hint">Loading Google sign-in...</p>
             )}
             {isGoogleSubmitting && (
               <p className="auth-google-status">Signing in with Google...</p>
