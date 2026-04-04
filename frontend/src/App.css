@@ -3510,7 +3510,7 @@ html.dark .custom-select-menu {
   height: 116px;
   border-radius: 12px;
   border: 1px solid color-mix(in hsl, var(--line) 86%, white 14%);
-  background: color-mix(in hsl, var(--card) 72%, white 28%);
+  background: var(--card);
   overflow: visible;
 }
 
@@ -6121,15 +6121,19 @@ html.dark .snapshot-badge {
   color: color-mix(in srgb, var(--snapshot-tone) 100%, white 15%);
 }
 
-html.dark .snapshot-tile,
-html.dark .price-range-card {
-  background: var(--card);
+html.dark .snapshot-tile {
+  background: #0f172a;
   border-color: var(--line);
 }
 
 html.dark .indicator-mini-chart {
-  background: var(--card);
+  background: #1e293b;
   border-color: var(--line);
+}
+
+html.dark .indicator-mini-body {
+  background: #0f172a;
+  border-color: var(--line-strong);
 }
 
 html.dark .indicator-mini-chart .recharts-area-path {
@@ -6160,7 +6164,18 @@ html.dark .headline-signal-confidence {
 }
 
 html.dark .price-range-line {
-  background: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(
+    90deg,
+    rgba(34, 197, 94, 0.45) 0%,
+    rgba(59, 130, 246, 0.45) 50%,
+    rgba(239, 68, 68, 0.45) 100%
+  );
+  opacity: 0.95;
+}
+
+html.dark .price-range-track {
+  background: #0f172a;
+  border-color: var(--line);
 }
 
 html.dark .price-range-distance.support {
@@ -6259,6 +6274,215 @@ html.dark .chart-live-dot {
 html.dark .chart-context-meta {
   color: var(--muted);
 }
+
+/* ─── Sentiment Analysis Dark Mode Refinements ────────────────── */
+
+html.dark .headline-search-input {
+  background: #0f172a;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+html.dark .headline-tone-filter button {
+  background: #1e293b;
+  border-color: var(--line-strong);
+  color: var(--ink-secondary);
+}
+
+html.dark .headline-tone-filter button:hover {
+  background: #334155;
+  color: var(--ink);
+}
+
+html.dark .headline-tone-filter button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+html.dark .headline-show-more {
+  background: #1e293b;
+  border-color: var(--line-strong);
+  color: var(--ink-secondary);
+}
+
+html.dark .headline-show-more:hover {
+  background: #334155;
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+/* ─── Full Report Dark Mode Refinements ─────────────────────── */
+
+html.dark .full-report-dashboard {
+  background: #0f172a;
+  border-color: var(--line);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+html.dark .full-report-breadcrumbs {
+  color: var(--muted);
+}
+
+html.dark .full-report-breadcrumbs .separator {
+  color: var(--line-strong);
+}
+
+html.dark .full-report-title-row h2 {
+  color: var(--ink);
+}
+
+html.dark .full-report-exchange-tag {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+html.dark .full-report-price {
+  color: var(--ink);
+}
+
+html.dark .full-report-hero-metric span {
+  color: var(--muted);
+}
+
+html.dark .full-report-hero-metric strong {
+  color: var(--ink);
+}
+
+html.dark .full-report-consensus-box {
+  background: #1e293b;
+  border-color: var(--line);
+}
+
+html.dark .full-report-consensus-box .label {
+  color: var(--muted);
+}
+
+html.dark .full-report-consensus-box strong {
+  color: var(--ink);
+}
+
+html.dark .full-report-card {
+  background: #1e293b;
+  border-color: var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+html.dark .full-report-card h3,
+html.dark .full-report-card h4 {
+  color: var(--ink);
+}
+
+html.dark .full-report-executive-content p,
+html.dark .full-report-card .analysis-copy,
+html.dark .full-report-card .analysis-bullets li {
+  color: color-mix(in srgb, var(--ink) 85%, white 15%);
+}
+
+html.dark .full-report-revenue-track {
+  background: transparent;
+}
+
+html.dark .full-report-revenue-col > span {
+  color: var(--muted);
+}
+
+html.dark .full-report-metrics-card li span {
+  color: var(--muted);
+}
+
+html.dark .full-report-metrics-card li strong {
+  color: var(--ink);
+}
+
+/* ─── Ownership Insights Dark Mode Refinements ──────────────── */
+
+html.dark .full-report-ownership-list li {
+  color: var(--ink);
+}
+
+/* ─── Global Dashboard Dark Mode Readability Refinements ────── */
+
+/* Metric Labels Contrast (Global) */
+html.dark .metric .label,
+html.dark .overview-metric span,
+html.dark .overview-details p,
+html.dark .technical-snapshot-title,
+html.dark .snapshot-tile-metric,
+html.dark .full-report-breadcrumbs,
+html.dark .full-report-exchange-tag,
+html.dark .full-report-hero-metric span,
+html.dark .full-report-consensus-box .label,
+html.dark .full-report-ownership-list li,
+html.dark .full-report-share-list li span,
+html.dark .full-report-revenue-legend span,
+html.dark .full-report-metrics-card li span,
+html.dark .full-report-risk-card li,
+html.dark .full-report-risk-inline-list li {
+  color: #cbd5e1; /* Slate-300 for high-contrast legibility */
+}
+
+/* Specific Ownership Note Polish */
+html.dark .full-report-ownership-note {
+  background: rgba(15, 23, 42, 0.65);
+  border-color: rgba(59, 131, 246, 0.3);
+  color: #93c5fd;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Share Ring Center & Labels */
+html.dark .full-report-share-ring::after {
+  background: #1e293b;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+html.dark .full-report-share-center strong,
+html.dark .full-report-ownership-list strong,
+html.dark .full-report-share-list li strong,
+html.dark .full-report-metrics-card li strong {
+  color: var(--ink);
+}
+
+/* ─── Final Full Report Dashboard "Finishing" ───────────────── */
+
+/* Vibrant Revenue Bars Visibility (Dark Mode) */
+html.dark .full-report-revenue-bar {
+  background: linear-gradient(180deg, rgba(59, 131, 246, 0.48) 0%, rgba(59, 131, 246, 0.32) 100%);
+  box-shadow: 0 0 12px rgba(59, 131, 246, 0.15);
+}
+
+html.dark .full-report-revenue-col > span,
+html.dark .full-report-revenue-legend span,
+html.dark .full-report-source-note {
+  color: #cbd5e1; /* High-contrast Slate-300 */
+}
+
+/* 3 Bottom Summary Cards Legibility (Dark Mode) */
+html.dark .full-report-summary-card h4 {
+  color: var(--ink);
+}
+
+html.dark .full-report-summary-card li,
+html.dark .full-report-summary-card p {
+  color: #cbd5e1; /* Shift to Slate-300 for uncompromised readability */
+}
+
+/* Score Meter Ticks & Labels (Full Report Context) */
+html.dark .full-report-score-row .technical-score-meter-tick-label {
+  color: #cbd5e1;
+}
+
+html.dark .full-report-score-value {
+  color: var(--ink);
+}
+
+/* Trend Alignment Legend Text */
+html.dark .chart-context-meta {
+  color: #cbd5e1;
+}
+
+
 
 
 
