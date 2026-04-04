@@ -4889,6 +4889,8 @@ th {
 }
 
 .compare-header {
+  position: relative;
+  z-index: 100; /* Ensure search suggestions float above results */
   padding: 3.5rem 2.5rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -5134,6 +5136,7 @@ th {
   left: 0;
   z-index: 10;
   background: var(--card);
+  opacity: 1; /* Ensure full opacity */
   font-weight: 700;
   color: var(--muted);
   min-width: 140px;
@@ -6647,8 +6650,52 @@ html.dark .chart-context-meta {
   color: #cbd5e1;
 }
 
+/* Comparison Page Dark Mode Overrides */
+html.dark .compare-view-btn {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+}
 
+html.dark .compare-view-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
 
+html.dark .compare-score.tone-positive {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
 
+html.dark .compare-score.tone-neutral {
+  background: rgba(234, 179, 8, 0.2);
+  color: #facc15;
+}
 
+html.dark .compare-score.tone-negative {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
 
+html.dark .verdict.positive {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+html.dark .verdict.neutral {
+  background: rgba(234, 179, 8, 0.2);
+  color: #facc15;
+  border-color: rgba(234, 179, 8, 0.4);
+}
+
+html.dark .verdict.negative {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+html.dark .compare-metric-col {
+  background: #0f172a !important; /* Force solid dark background for opacity */
+}
