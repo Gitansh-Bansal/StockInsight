@@ -292,7 +292,9 @@ function HeaderBar({
   onToggleTheme,
 }: HeaderBarProps) {
   const [isHidden, setIsHidden] = useState(false)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const lastScrollYRef = useRef(0)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const onScroll = () => {
@@ -303,6 +305,7 @@ function HeaderBar({
         setIsHidden(false)
       } else if (currentScrollY > previousScrollY && currentScrollY > 96) {
         setIsHidden(true)
+        setIsMenuOpen(false) // Close menu on scroll hide
       } else if (currentScrollY < previousScrollY) {
         setIsHidden(false)
       }
@@ -310,11 +313,21 @@ function HeaderBar({
       lastScrollYRef.current = currentScrollY
     }
 
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false)
+      }
+    }
+
     window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('mousedown', handleClickOutside)
     return () => {
       window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('mousedown', handleClickOutside)
     }
   }, [])
+
+  const toggleMenu = () => setIsMenuOpen((prev) => !prev)
 
   return (
     <header className={`top-bar${isHidden ? ' is-hidden' : ''}`}>
@@ -333,7 +346,7 @@ function HeaderBar({
       ) : (
         <div className="top-search-placeholder" aria-hidden="true" />
       )}
-      <div className="top-actions">
+      <div className="top-actions" ref={menuRef}>
         <button
           type="button"
           className="compare-nav-btn"
@@ -341,44 +354,97 @@ function HeaderBar({
         >
           {isCompareRoute ? 'Search Ticker' : 'Compare'}
         </button>
-        <button
-          type="button"
-          className="theme-toggle-btn secondary"
-          onClick={onToggleTheme}
-          aria-label="Toggle dark mode"
-          style={{ padding: '0.45rem', display: 'flex', alignItems: 'center' }}
-        >
-          {theme === 'dark' ? '☀️' : '🌙'}
-        </button>
-        {authStatus === 'loading' ? (
-          <span className="session-chip">Restoring session...</span>
-        ) : isAuthenticated ? (
-          <>
-            <span className="session-chip">
-              Signed in as <strong>{user?.username ?? 'user'}</strong>
-            </span>
-            <button type="button" className="secondary" onClick={onLogout}>
-              Log Out
-            </button>
-          </>
-        ) : (
-          <>
-            <button type="button" onClick={() => onAuthModeChange('login')}>
-              Log In
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => onAuthModeChange('signup')}
+
+        <div className="top-user-wrap">
+          <button
+            type="button"
+            className={`menu-toggle-btn${isMenuOpen ? ' is-active' : ''}`}
+            onClick={toggleMenu}
+            aria-label="Toggle user menu"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              Create Account
-            </button>
-          </>
-        )}
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </button>
+
+          {isMenuOpen && (
+            <div className="top-dropdown-menu">
+              {isAuthenticated && (
+                <div className="dropdown-user-info">
+                  <span className="user-label">Signed in as</span>
+                  <span className="user-name">{user?.username ?? 'user'}</span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="dropdown-item theme-item"
+                onClick={() => {
+                  onToggleTheme()
+                  setIsMenuOpen(false)
+                }}
+              >
+                <span className="icon">{theme === 'dark' ? '☀️' : '🌙'}</span>
+                {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+              </button>
+
+              <div className="dropdown-divider" />
+
+              {authStatus === 'loading' ? (
+                <div className="dropdown-status">Restoring session...</div>
+              ) : isAuthenticated ? (
+                <button
+                  type="button"
+                  className="dropdown-item logout-item"
+                  onClick={() => {
+                    onLogout()
+                    setIsMenuOpen(false)
+                  }}
+                >
+                  Log Out
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    onClick={() => {
+                      onAuthModeChange('login')
+                      setIsMenuOpen(false)
+                    }}
+                  >
+                    Log In
+                  </button>
+                  <button
+                    type="button"
+                    className="dropdown-item signup-item"
+                    onClick={() => {
+                      onAuthModeChange('signup')
+                      setIsMenuOpen(false)
+                    }}
+                  >
+                    Create Account
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </header>
   )
 }
+
 
 type HomePageProps = {
   onSearch: (ticker: string) => void
