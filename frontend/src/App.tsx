@@ -71,6 +71,29 @@ function App() {
   const activeTicker = route.type === 'stock' ? route.ticker : null
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('theme')
+      if (saved === 'dark' || saved === 'light') return saved
+    } catch {}
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  })
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+    try {
+      localStorage.setItem('theme', theme)
+    } catch {}
+  }, [theme])
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => prev === 'dark' ? 'light' : 'dark')
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -195,6 +218,8 @@ function App() {
         isCompareRoute={route.type === 'compare'}
         user={authUser}
         initialSearch={activeTicker ?? ''}
+        theme={theme}
+        onToggleTheme={toggleTheme}
         onAuthModeChange={openAuthPage}
         onLogout={handleLogout}
         onSearch={handleSearch}
@@ -209,6 +234,7 @@ function App() {
             ticker={route.ticker}
             tab={route.tab}
             user={authUser}
+            theme={theme}
             onTabChange={(tab) =>
               navigate(`/stock/${encodeURIComponent(route.ticker)}/${tab}`, {
                 replace: true,
@@ -246,6 +272,8 @@ type HeaderBarProps = {
   onCompare: () => void
   showSearch: boolean
   user: AuthUser | null
+  theme: 'light' | 'dark'
+  onToggleTheme: () => void
 }
 
 function HeaderBar({
@@ -260,6 +288,8 @@ function HeaderBar({
   onCompare,
   showSearch,
   user,
+  theme,
+  onToggleTheme,
 }: HeaderBarProps) {
   const [isHidden, setIsHidden] = useState(false)
   const lastScrollYRef = useRef(0)
@@ -310,6 +340,15 @@ function HeaderBar({
           onClick={isCompareRoute ? onHome : onCompare}
         >
           {isCompareRoute ? 'Search Ticker' : 'Compare'}
+        </button>
+        <button
+          type="button"
+          className="theme-toggle-btn secondary"
+          onClick={onToggleTheme}
+          aria-label="Toggle dark mode"
+          style={{ padding: '0.45rem', display: 'flex', alignItems: 'center' }}
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
         </button>
         {authStatus === 'loading' ? (
           <span className="session-chip">Restoring session...</span>
@@ -773,10 +812,11 @@ type AnalysisPageProps = {
   ticker: string
   tab: AnalysisTab
   user: import('./types').AuthUser | null
+  theme: 'light' | 'dark'
   onTabChange: (tab: AnalysisTab) => void
 }
 
-function AnalysisPage({ ticker, tab, user, onTabChange }: AnalysisPageProps) {
+function AnalysisPage({ ticker, tab, user, theme, onTabChange }: AnalysisPageProps) {
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -932,7 +972,7 @@ function AnalysisPage({ ticker, tab, user, onTabChange }: AnalysisPageProps) {
       {tab === 'discussion' ? (
         <DiscussionSection ticker={ticker} user={user} />
       ) : (
-        !isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport, user)
+        !isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport, user, theme)
       )}
     </section>
   )
@@ -946,9 +986,10 @@ type OverviewSectionProps = {
   sentimentLlm?: string
   ticker?: string
   displayCurrency?: string
+  theme?: 'light' | 'dark'
 }
 
-function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker, displayCurrency }: OverviewSectionProps) {
+function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker, displayCurrency, theme }: OverviewSectionProps) {
   const summary =
     llmSummary?.trim() ||
     'Composite score blends fundamental, technical, and sentiment signals into one decision-oriented output.'
@@ -1059,10 +1100,19 @@ function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker
       chart = lib.createChart(container, {
         width,
         height,
-        layout: { background: { color: 'white' }, textColor: '#111827' },
+        layout: {
+          background: { color: theme === 'dark' ? 'transparent' : 'white' },
+          textColor: theme === 'dark' ? '#f8fafc' : '#111827',
+        },
         rightPriceScale: { visible: true },
-        timeScale: { borderColor: '#e5e7eb', timeVisible: true },
-        grid: { vertLines: { color: '#f3f4f6' }, horzLines: { color: '#f3f4f6' } },
+        timeScale: {
+          borderColor: theme === 'dark' ? '#334155' : '#e5e7eb',
+          timeVisible: true,
+        },
+        grid: {
+          vertLines: { color: theme === 'dark' ? '#1e293b' : '#f3f4f6' },
+          horzLines: { color: theme === 'dark' ? '#1e293b' : '#f3f4f6' },
+        },
         localization: { locale: 'en-US', priceFormatter: (price: number) => formatCurrency(price, activeCurrency) },
         handleScroll: false,
         handleScale: false,
@@ -1133,7 +1183,7 @@ function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker
       if (resizeObserver && container) resizeObserver.unobserve(container)
       if (chart) chart.remove()
     }
-  }, [activeChartRows, ovChartType, ovChartDuration, activeCurrency])
+  }, [activeChartRows, ovChartType, ovChartDuration, activeCurrency, theme])
 
   // News insights from sentiment
   const newsInsights = useMemo(() => {
@@ -1169,6 +1219,11 @@ function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker
                       {livePrice !== null ? formatCurrency(livePrice, activeCurrency) : 'N/A'}
                     </span>
                   </div>
+                  <span className={`chart-delta tone-${chartDirectionTone}`}>
+                    {chartPerformance
+                      ? `${chartPerformance.change >= 0 ? '+' : ''}${chartPerformance.percent.toFixed(2)}%`
+                      : 'N/A'}
+                  </span>
                 </div>
                 <p className="chart-context-meta">
                   {chartPerformance
@@ -1189,18 +1244,7 @@ function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker
                     </button>
                   ))}
                 </div>
-                <select
-                  className="chart-type-select"
-                  value={ovChartType}
-                  onChange={(e) => setOvChartType(e.target.value as ChartType)}
-                  aria-label="Select chart type"
-                >
-                  {CHART_TYPE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <ChartTypeSelect value={ovChartType} onChange={setOvChartType} />
               </div>
             </div>
             <div
@@ -1278,6 +1322,7 @@ type FundamentalSectionProps = {
   result: AnalysisResponse['fundamental']
   llmSummary?: string
   displayCurrency: string
+  theme?: 'light' | 'dark'
 }
 
 function StackedBarBurn({ labelA, labelB, valA, valB, colorA, colorB }: { labelA: string, labelB: string, valA?: number, valB?: number, colorA: string, colorB: string }) {
@@ -1308,6 +1353,7 @@ function FundamentalSection({
   result,
   llmSummary,
   displayCurrency,
+  theme,
 }: FundamentalSectionProps) {
   const revRef = useRef<HTMLDivElement | null>(null)
   const isRevInView = useInViewOnce(revRef, { threshold: 0, rootMargin: '100px 0px' })
@@ -1612,8 +1658,8 @@ function FundamentalSection({
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} cursor={{fill: 'rgba(0,0,0,0.05)'}} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Bar dataKey="revenue" name="Revenue" fill="#94a3b8" radius={[4,4,0,0]} />
-                  <Bar dataKey="netProfit" name="Net Profit" fill="#2563eb" radius={[4,4,0,0]} />
+                  <Bar dataKey="revenue" name="Revenue" fill="var(--chart-slate)" radius={[4,4,0,0]} />
+                  <Bar dataKey="netProfit" name="Net Profit" fill="var(--chart-blue)" radius={[4,4,0,0]} />
                   </BarChart>
                 ) : <div style={{ height: '100%' }} />}
               </ResponsiveContainer>
@@ -1630,12 +1676,12 @@ function FundamentalSection({
                   <AreaChart data={data.cashflowTrend}>
                   <defs>
                     <linearGradient id="colorOp" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--chart-blue)" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="var(--chart-blue)" stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="colorFcf" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--chart-green)" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="var(--chart-green)" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
@@ -1644,8 +1690,8 @@ function FundamentalSection({
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Area type="monotone" dataKey="operatingCashFlow" name="Op Cash Flow" stroke="#2563eb" fillOpacity={1} fill="url(#colorOp)" stackId="1" />
-                  <Area type="monotone" dataKey="freeCashFlow" name="Free Cash Flow" stroke="#10b981" fillOpacity={1} fill="url(#colorFcf)" stackId="1" />
+                  <Area type="monotone" dataKey="operatingCashFlow" name="Op Cash Flow" stroke="var(--chart-blue)" fillOpacity={1} fill="url(#colorOp)" stackId="1" />
+                  <Area type="monotone" dataKey="freeCashFlow" name="Free Cash Flow" stroke="var(--chart-green)" fillOpacity={1} fill="url(#colorFcf)" stackId="1" />
                   </AreaChart>
                 ) : <div style={{ height: '100%' }} />}
               </ResponsiveContainer>
@@ -1706,8 +1752,8 @@ function FundamentalSection({
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(2)}%`} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Line type="monotone" dataKey="operatingMargin" name="Operating Margin" stroke="#2563eb" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="netMargin" name="Net Margin" stroke="#10b981" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="operatingMargin" name="Operating Margin" stroke="var(--chart-blue)" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="netMargin" name="Net Margin" stroke="var(--chart-green)" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
                   </LineChart>
                 ) : <div style={{ height: '100%' }} />}
               </ResponsiveContainer>
@@ -1732,6 +1778,76 @@ const CHART_TYPE_OPTIONS: Array<{ value: ChartType; label: string }> = [
 
 const CHART_DURATION_OPTIONS = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'ALL']
 
+function ChartTypeSelect({
+  value,
+  onChange,
+}: {
+  value: ChartType
+  onChange: (val: ChartType) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const selectedOption = CHART_TYPE_OPTIONS.find((opt) => opt.value === value)
+
+  return (
+    <div className="custom-chart-select" ref={containerRef}>
+      <button
+        type="button"
+        className={`custom-select-trigger ${isOpen ? 'is-open' : ''}`}
+        onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span>{selectedOption?.label}</span>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="chevron-icon"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="custom-select-menu" role="listbox">
+          {CHART_TYPE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`custom-select-option ${opt.value === value ? 'is-selected' : ''}`}
+              role="option"
+              aria-selected={opt.value === value}
+              onClick={() => {
+                onChange(opt.value)
+                setIsOpen(false)
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 type TechnicalSectionProps = {
   result: AnalysisResponse['technical']
   llmSummary?: string
@@ -1739,6 +1855,7 @@ type TechnicalSectionProps = {
   companyName?: string
   beta: number | null
   displayCurrency: string
+  theme?: 'light' | 'dark'
 }
 
 function TechnicalSection({
@@ -1748,6 +1865,7 @@ function TechnicalSection({
   companyName,
   beta,
   displayCurrency,
+  theme,
 }: TechnicalSectionProps) {
   if (!result) {
     return (
@@ -2147,19 +2265,19 @@ function TechnicalSection({
         width,
         height,
         layout: {
-          background: { color: 'white' },
-          textColor: '#111827',
+          background: { color: theme === 'dark' ? 'transparent' : 'white' },
+          textColor: theme === 'dark' ? '#f8fafc' : '#111827',
         },
         rightPriceScale: {
           visible: true,
         },
         timeScale: {
-          borderColor: '#e5e7eb',
+          borderColor: theme === 'dark' ? '#334155' : '#e5e7eb',
           timeVisible: true,
         },
         grid: {
-          vertLines: { color: '#f3f4f6' },
-          horzLines: { color: '#f3f4f6' },
+          vertLines: { color: theme === 'dark' ? '#1e293b' : '#f3f4f6' },
+          horzLines: { color: theme === 'dark' ? '#1e293b' : '#f3f4f6' },
         },
         localization: {
           locale: 'en-US',
@@ -2269,7 +2387,7 @@ function TechnicalSection({
         chart.remove()
       }
     }
-  }, [activeChartRows, tradingViewSymbol, chartType, chartDuration, activeCurrency])
+  }, [activeChartRows, tradingViewSymbol, chartType, chartDuration, activeCurrency, theme])
 
   return (
     <article className="panel reveal">
@@ -2292,7 +2410,7 @@ function TechnicalSection({
             <div className="chart-context">
               <div className="chart-context-main">
                 <div className="chart-symbol-price">
-                  <h3>{chartTitle}</h3>
+                  <h3>{ticker?.toUpperCase() ?? ''}</h3>
                   <span className="chart-live-price">
                     <span className="chart-live-dot" aria-hidden="true" />
                     {livePrice !== null ? formatCurrency(livePrice, activeCurrency) : 'N/A'}
@@ -2323,19 +2441,9 @@ function TechnicalSection({
                   </button>
                 ))}
               </div>
-              <select
-                className="chart-type-select"
-                value={chartType}
-                onChange={(e) => setChartType(e.target.value as ChartType)}
-                aria-label="Select chart type"
-              >
-                {CHART_TYPE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              <ChartTypeSelect value={chartType} onChange={setChartType} />
             </div>
+
           </div>
           <div
             ref={chartShellRef}
@@ -2546,9 +2654,10 @@ function TechnicalSection({
 type SentimentSectionProps = {
   result: AnalysisResponse['sentiment']
   llmSummary?: string
+  theme?: 'light' | 'dark'
 }
 
-function SentimentSection({ result, llmSummary }: SentimentSectionProps) {
+function SentimentSection({ result, llmSummary, theme }: SentimentSectionProps) {
   const HEADLINES_BATCH_SIZE = 15
   const [headlineQuery, setHeadlineQuery] = useState('')
   const [headlineToneFilter, setHeadlineToneFilter] = useState<
@@ -2959,6 +3068,7 @@ function FullReportSection({
   analysis: AnalysisResponse
   isGeneratingReport?: boolean
   user?: import('./types').AuthUser | null
+  theme?: 'light' | 'dark'
 }) {
   const pdfRef = useRef<HTMLDivElement | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -4089,6 +4199,7 @@ function renderSection(
   ticker: string,
   isGeneratingReport: boolean = false,
   user?: import('./types').AuthUser | null,
+  theme?: 'light' | 'dark'
 ) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
   const displayCurrency = resolveAnalysisCurrency(analysis)
@@ -4106,6 +4217,7 @@ function renderSection(
           result={analysis.fundamental}
           llmSummary={getLlmSummary('fundamental')}
           displayCurrency={displayCurrency}
+          theme={theme}
         />
       )
     case 'technical':
@@ -4121,6 +4233,7 @@ function renderSection(
           }
           beta={analysis.fundamental?.data?.beta ?? null}
           displayCurrency={displayCurrency}
+          theme={theme}
         />
       )
     case 'sentiment':
@@ -4128,6 +4241,7 @@ function renderSection(
         <SentimentSection
           result={analysis.sentiment}
           llmSummary={getLlmSummary('sentiment')}
+          theme={theme}
         />
       )
     case 'full-report':
@@ -4139,6 +4253,7 @@ function renderSection(
           analysis={analysis}
           isGeneratingReport={isGeneratingReport}
           user={user}
+          theme={theme}
         />
       )
     case 'overview':
@@ -4152,6 +4267,7 @@ function renderSection(
           sentimentLlm={getLlmSummary('sentiment')}
           ticker={ticker}
           displayCurrency={displayCurrency}
+          theme={theme}
         />
       )
   }
@@ -5541,7 +5657,7 @@ function buildIndicatorMiniCharts(ohlcv: OhlcvPoint[]): IndicatorMiniChart[] {
       type: 'line',
       series: toMiniSeries(rsiValues, recentRows),
       currentValueLabel: formatMiniIndicatorValue('rsi', lastMiniValue(rsiValues)),
-      stroke: '#2563eb',
+      stroke: 'var(--chart-blue)',
     },
     {
       key: 'macd-hist',
@@ -5552,7 +5668,7 @@ function buildIndicatorMiniCharts(ohlcv: OhlcvPoint[]): IndicatorMiniChart[] {
         'macd-hist',
         lastMiniValue(macdHistogramValues),
       ),
-      stroke: '#0f766e',
+      stroke: 'var(--chart-teal)',
     },
     {
       key: 'adx',
@@ -5560,7 +5676,7 @@ function buildIndicatorMiniCharts(ohlcv: OhlcvPoint[]): IndicatorMiniChart[] {
       type: 'line',
       series: toMiniSeries(adxValues, recentRows),
       currentValueLabel: formatMiniIndicatorValue('adx', lastMiniValue(adxValues)),
-      stroke: '#d97706',
+      stroke: 'var(--chart-amber)',
     },
     {
       key: 'volume',
@@ -5568,7 +5684,7 @@ function buildIndicatorMiniCharts(ohlcv: OhlcvPoint[]): IndicatorMiniChart[] {
       type: 'line',
       series: toMiniSeries(volumeValues, recentRows),
       currentValueLabel: formatMiniIndicatorValue('volume', lastMiniValue(volumeValues)),
-      stroke: '#0f766e',
+      stroke: 'var(--chart-teal)',
     },
   ]
 
@@ -5975,6 +6091,7 @@ function resolveTechnicalData(
     ['52WeekLow']: legacy?.['52WeekLow'] ?? indicators?.['52WeekLow'] ?? null,
     ['52WeekHigh']:
       legacy?.['52WeekHigh'] ?? indicators?.['52WeekHigh'] ?? null,
+    structure: result.structure,
   }
 }
 

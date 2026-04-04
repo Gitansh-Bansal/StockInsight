@@ -2221,15 +2221,25 @@
 .chart-delta {
   --delta-color: #a16207;
   border-radius: 999px;
-  border: 1px solid color-mix(in hsl, var(--delta-color) 24%, white 76%);
-  background: color-mix(in hsl, var(--delta-color) 11%, white 89%);
+  border: 1px solid color-mix(in hsl, var(--delta-color) 24%, transparent);
+  background: color-mix(in hsl, var(--delta-color) 11%, transparent);
   color: var(--delta-color);
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.02em;
-  padding: 0.22rem 0.58rem;
+  padding: 0.22rem 0.65rem;
   font-family: var(--mono-font);
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
 }
+
+html.dark .chart-delta {
+  border-color: color-mix(in srgb, var(--delta-color) 45%, transparent);
+  background: color-mix(in srgb, var(--delta-color) 15%, transparent);
+  color: color-mix(in srgb, var(--delta-color) 100%, white 15%);
+}
+
 
 .chart-delta.tone-bullish {
   --delta-color: #15803d;
@@ -2293,21 +2303,103 @@
   box-shadow: 0 10px 22px color-mix(in hsl, var(--accent) 38%, transparent);
 }
 
-.chart-type-select {
+.custom-chart-select {
+  position: relative;
+  display: inline-block;
+  min-width: 110px;
   margin-left: auto;
-  border: 1px solid color-mix(in hsl, var(--line) 74%, white 26%);
-  border-radius: 0.62rem;
-  padding: 0.4rem 0.62rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--ink);
-  background: white;
-  font-family: inherit;
 }
 
-.chart-type-select:focus-visible {
-  outline: 2px solid color-mix(in hsl, var(--accent) 45%, transparent);
-  outline-offset: 2px;
+
+.custom-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.38rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.custom-select-trigger:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--card));
+}
+
+.custom-select-trigger.is-open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.custom-select-trigger .chevron-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform 200ms ease;
+  opacity: 0.7;
+}
+
+.custom-select-trigger.is-open .chevron-icon {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+
+.custom-select-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 100%;
+  z-index: 1000;
+  display: grid;
+  padding: 0.4rem;
+  background: color-mix(in srgb, var(--card) 98%, white 2%);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line-strong);
+  border-radius: 1rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+  animation: select-menu-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes select-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.custom-select-option {
+  width: 100%;
+  padding: 0.42rem 0.72rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: left;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 0.65rem;
+  cursor: pointer;
+  transition: all 120ms ease;
+  user-select: none;
+}
+
+
+.custom-select-option:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.custom-select-option.is-selected {
+  background: var(--accent);
+  color: white;
+}
+
+html.dark .custom-select-menu {
+  background: color-mix(in srgb, var(--card) 92%, #ffffff 2%);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
 .tv-chart-shell {
@@ -5931,3 +6023,243 @@ th {
     text-align: center;
   }
 }
+
+/* ─── Premium Dark Mode Refinements ─────────────────────────────────── */
+
+html.dark .pdf-download-btn {
+  background: var(--card);
+  border-color: var(--line-strong);
+  color: var(--accent-hover);
+}
+
+html.dark .pdf-download-btn:disabled {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+html.dark .pdf-download-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent);
+}
+
+html.dark .recharts-cartesian-grid-horizontal line,
+html.dark .recharts-cartesian-grid-vertical line {
+  stroke: var(--line) !important;
+}
+
+html.dark .recharts-cartesian-axis-tick text {
+  fill: var(--muted) !important;
+}
+
+html.dark .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: var(--card) !important;
+  border-color: var(--line) !important;
+  color: var(--ink) !important;
+}
+
+html.dark .indicator-mini-tooltip,
+html.dark .full-report-revenue-tooltip {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: var(--line);
+}
+
+html.dark .tv-chart-shell {
+  background: var(--bg);
+  border-color: var(--line);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+html.dark .tv-chart-wrap {
+  background: transparent;
+}
+
+html.dark .chart-type-selector button {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--line-strong);
+  color: var(--ink-secondary);
+}
+
+html.dark .chart-type-selector button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent-hover);
+}
+
+html.dark .chart-type-selector button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.35);
+}
+
+html.dark .chart-type-select {
+  background: #0f172a;
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+html.dark .chart-type-select option {
+  background: #0f172a;
+  color: var(--ink);
+}
+
+html.dark .verdict,
+html.dark .score-tag {
+  background: #1e293b;
+  border-color: var(--line-strong);
+}
+
+html.dark .score-tag.muted {
+  background: #0f172a;
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+html.dark .snapshot-badge {
+  border-color: color-mix(in srgb, var(--snapshot-tone) 45%, transparent);
+  background: color-mix(in srgb, var(--snapshot-tone) 18%, transparent);
+  color: color-mix(in srgb, var(--snapshot-tone) 100%, white 15%);
+}
+
+html.dark .snapshot-tile,
+html.dark .price-range-card {
+  background: var(--card);
+  border-color: var(--line);
+}
+
+html.dark .indicator-mini-chart {
+  background: var(--card);
+  border-color: var(--line);
+}
+
+html.dark .indicator-mini-chart .recharts-area-path {
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.08));
+}
+
+html.dark .indicator-mini-chart .recharts-curve {
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.05));
+}
+
+html.dark .snapshot-tile:hover {
+  border-color: color-mix(in srgb, var(--tile-tone) 45%, var(--line));
+}
+
+
+html.dark .snapshot-value-dot {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--tile-tone) 28%, transparent);
+}
+
+html.dark .headline-signal {
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  border-width: 1px;
+}
+
+html.dark .headline-signal-confidence {
+  color: color-mix(in srgb, currentColor 85%, white 15%);
+}
+
+html.dark .price-range-line {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+html.dark .price-range-distance.support {
+  background: linear-gradient(to left, rgba(34, 197, 94, 0.25), transparent);
+}
+
+html.dark .price-range-distance.resistance {
+  background: linear-gradient(to right, rgba(239, 68, 68, 0.25), transparent);
+}
+
+html.dark .price-range-marker.kind-support {
+  --marker-tone: #4ade80;
+}
+
+html.dark .price-range-marker.kind-resistance {
+  --marker-tone: #f87171;
+}
+
+html.dark .price-range-marker.kind-current .price-range-marker-dot {
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+html.dark .price-range-card {
+  background: #1e293b;
+  border-color: var(--line);
+}
+
+html.dark .price-range-card.kind-current {
+  background: color-mix(in srgb, var(--accent) 12%, #1e293b);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+html.dark .price-range-card p {
+  color: color-mix(in srgb, var(--card-tone) 85%, white 15%);
+}
+
+html.dark .price-ladder.compact .price-ladder-row.kind-current .price-ladder-label,
+html.dark .price-ladder.compact .price-ladder-row.kind-current .price-ladder-value {
+  color: color-mix(in srgb, var(--accent) 100%, white 20%);
+}
+
+html.dark .pdf-page,
+html.dark .full-report-content {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+html.dark .full-report-section,
+html.dark .technical-summary-card {
+  background: var(--card);
+  border-color: var(--line);
+}
+
+html.dark .chart-overlay {
+  background: rgba(2, 6, 23, 0.88);
+}
+
+/* Vibrant Meters & Bars for Dark Mode */
+html.dark .technical-score-meter-segments .segment.strong-bearish { background: #ef4444; }
+html.dark .technical-score-meter-segments .segment.bearish { background: #f97316; }
+html.dark .technical-score-meter-segments .segment.neutral { background: #eab308; }
+html.dark .technical-score-meter-segments .segment.bullish { background: #84cc16; }
+html.dark .technical-score-meter-segments .segment.strong-bullish { background: #22c55e; }
+
+html.dark .technical-score-meter-segments::after {
+  background:
+    linear-gradient(to right, transparent calc(30% - 0.5px), rgba(0,0,0,0.2) calc(30% - 0.5px), rgba(0,0,0,0.2) calc(30% + 0.5px), transparent calc(30% + 0.5px)),
+    linear-gradient(to right, transparent calc(45% - 0.5px), rgba(0,0,0,0.15) calc(45% - 0.5px), rgba(0,0,0,0.15) calc(45% + 0.5px), transparent calc(45% + 0.5px)),
+    linear-gradient(to right, transparent calc(55% - 0.5px), rgba(0,0,0,0.15) calc(55% - 0.5px), rgba(0,0,0,0.15) calc(55% + 0.5px), transparent calc(55% + 0.5px)),
+    linear-gradient(to right, transparent calc(70% - 0.5px), rgba(0,0,0,0.2) calc(70% - 0.5px), rgba(0,0,0,0.2) calc(70% + 0.5px), transparent calc(70% + 0.5px));
+}
+
+html.dark .snapshot-tile-meter {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html.dark .snapshot-tile-meter > span {
+  background: color-mix(in srgb, var(--tile-tone) 90%, white 10%);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--tile-tone) 40%, transparent);
+}
+
+html.dark .chart-live-price {
+  color: color-mix(in srgb, var(--accent) 85%, white 15%);
+}
+
+html.dark .chart-delta {
+  border-color: color-mix(in srgb, var(--delta-color) 45%, transparent);
+  background: color-mix(in srgb, var(--delta-color) 18%, transparent);
+  color: color-mix(in srgb, var(--delta-color) 100%, white 15%);
+}
+
+html.dark .chart-live-dot {
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+}
+
+html.dark .chart-context-meta {
+  color: var(--muted);
+}
+
+
+
+
