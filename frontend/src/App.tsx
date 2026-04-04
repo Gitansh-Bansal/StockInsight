@@ -1028,19 +1028,18 @@ function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker
     return { start, end, change, percent: (change / start) * 100 }
   }, [activeChartRows])
 
-
   const chartDirectionLabel =
-    chartPerformance && chartPerformance.change > 0
-      ? 'Uptrend'
-      : chartPerformance && chartPerformance.change < 0
-        ? 'Downtrend'
-        : 'Sideways'
+    chartPerformance && chartPerformance.change > 0 ? 'Uptrend' : chartPerformance && chartPerformance.change < 0 ? 'Downtrend' : 'Sideways'
+
+  const chartDirectionTone: InsightTone =
+    chartPerformance && chartPerformance.change > 0 ? 'bullish' : chartPerformance && chartPerformance.change < 0 ? 'bearish' : 'neutral'
 
   const livePrice = useMemo(() => {
     const latest = activeChartRows[activeChartRows.length - 1]?.close
     if (isFiniteNumber(latest)) return latest
     return null
   }, [activeChartRows])
+
 
   // Fetch chart data when duration changes
   useEffect(() => {
