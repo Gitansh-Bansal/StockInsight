@@ -21,6 +21,7 @@ import type {
   OhlcvPoint,
   ReportSections,
   SentimentHeadline,
+  SentimentResult,
   TechnicalData,
   TechnicalResult,
 } from './types'
@@ -1036,7 +1037,7 @@ function AnalysisPage({ ticker, tab, user, theme, onTabChange }: AnalysisPagePro
       )}
 
       {tab === 'discussion' ? (
-        <DiscussionSection ticker={ticker} user={user} />
+        <DiscussionSection ticker={ticker} user={user} theme={theme} />
       ) : (
         !isLoading && !error && analysis && renderSection(tab, analysis, ticker, isGeneratingReport, user, theme)
       )}
@@ -1048,7 +1049,7 @@ type OverviewSectionProps = {
   overview: AnalysisResponse['overview']
   llmSummary?: string
   technical?: TechnicalResult | null
-  sentiment?: import('./types').SentimentResult | null
+  sentiment?: SentimentResult | null
   sentimentLlm?: string
   ticker?: string
   displayCurrency?: string
@@ -1261,7 +1262,7 @@ function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker
 
 
   return (
-    <article className="panel reveal">
+    <article className={`panel reveal theme-${theme}`}>
       <header className="panel-head">
         <h2>Overall Analysis</h2>
         <span className={`verdict ${toneFromVerdict(overview.verdict)}`}>
@@ -1460,7 +1461,7 @@ function FundamentalSection({
     : 'N/A'
 
   return (
-    <article className="panel reveal">
+    <article className={`panel reveal theme-${theme}`}>
       <header className="panel-head">
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <h2 style={{ margin: 0 }}>Fundamental Analysis</h2>
@@ -1917,7 +1918,6 @@ type TechnicalSectionProps = {
   result: AnalysisResponse['technical']
   llmSummary?: string
   ticker: string
-  companyName?: string
   beta: number | null
   displayCurrency: string
   theme?: 'light' | 'dark'
@@ -1927,7 +1927,6 @@ function TechnicalSection({
   result,
   llmSummary,
   ticker,
-  companyName,
   beta,
   displayCurrency,
   theme,
@@ -2242,10 +2241,6 @@ function TechnicalSection({
       : result.signal === 'Strong Bearish'
         ? 'Strongly Bearish'
         : safeText(result.signal)
-  const symbolLabel = ticker.toUpperCase()
-  const chartTitle = companyName?.trim()
-    ? `${companyName.trim()} (${symbolLabel})`
-    : symbolLabel
 
   useEffect(() => {
     setShowPriceRangeMarkers(false)
@@ -2455,7 +2450,7 @@ function TechnicalSection({
   }, [activeChartRows, tradingViewSymbol, chartType, chartDuration, activeCurrency, theme])
 
   return (
-    <article className="panel reveal">
+    <article className={`panel reveal theme-${theme}`}>
       <header className="panel-head">
         <h2>Technical Analysis</h2>
         <span className="score-tag">{formatScore(result.score)}</span>
@@ -2797,7 +2792,7 @@ function SentimentSection({ result, llmSummary, theme }: SentimentSectionProps) 
   const hasMoreHeadlines = visibleHeadlineCount < filteredHeadlines.length
 
   return (
-    <article className="panel reveal">
+    <article className={`panel reveal theme-${theme}`}>
       <header className="panel-head">
         <h2>Sentiment Analysis</h2>
         <span className="score-tag">{formatScore(result.score)}</span>
@@ -3129,6 +3124,7 @@ function FullReportSection({
   analysis,
   isGeneratingReport,
   user,
+  theme,
 }: {
   analysis: AnalysisResponse
   isGeneratingReport?: boolean
@@ -3626,7 +3622,7 @@ function FullReportSection({
   const isFullReportSnapshotInView = useInViewOnce(fullReportSnapshotSectionRef, { threshold: 0.2 })
 
   return (
-    <article className="full-report-dashboard reveal">
+    <article className={`full-report-dashboard reveal theme-${theme}`}>
       {/* Hidden PDF template for capture */}
       <PdfReportTemplate ref={pdfRef} analysis={analysis} />
 
@@ -4291,11 +4287,6 @@ function renderSection(
           result={analysis.technical}
           llmSummary={getLlmSummary('technical')}
           ticker={ticker}
-          companyName={
-            analysis.fundamental?.data?.shortName ??
-            analysis.fundamental?.data?.longName ??
-            ''
-          }
           beta={analysis.fundamental?.data?.beta ?? null}
           displayCurrency={displayCurrency}
           theme={theme}

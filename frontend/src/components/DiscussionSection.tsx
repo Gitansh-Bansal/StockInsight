@@ -63,11 +63,12 @@ type SortMode = 'newest' | 'top'
 type DiscussionSectionProps = {
   ticker: string
   user: AuthUser | null
+  theme: 'light' | 'dark'
 }
 
 // ─── Main Component ─────────────────────────────────────────────────
 
-export function DiscussionSection({ ticker, user }: DiscussionSectionProps) {
+export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProps) {
   const [posts, setPosts] = useState<DiscussionPost[]>([])
   const [totalPages, setTotalPages] = useState(1)
   const [page, setPage] = useState(1)
@@ -183,7 +184,7 @@ export function DiscussionSection({ ticker, user }: DiscussionSectionProps) {
 
   if (activeThread) {
     return (
-      <div className="disc-layout reveal">
+      <div className={`disc-layout reveal theme-${theme}`}>
         <div className="disc-thread-header">
           <button
             type="button"
@@ -278,7 +279,7 @@ export function DiscussionSection({ ticker, user }: DiscussionSectionProps) {
   // ─── Posts List View ─────────────────────────
 
   return (
-    <div className="disc-layout reveal">
+    <div className={`disc-layout reveal theme-${theme}`}>
       <div className="disc-header panel">
         <div className="disc-header-top">
           <div>

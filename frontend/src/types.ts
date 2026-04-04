@@ -105,6 +105,7 @@ export interface TechnicalData {
   sma20: number | null
   sma50: number | null
   rsi: number | null
+  ['52WeekLow']: number | null
   ['52WeekHigh']: number | null
   structure?: TechnicalStructure
 }
