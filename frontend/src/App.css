@@ -5340,6 +5340,18 @@ th {
   font-size: 1.35rem;
 }
 
+.disc-layout.panel {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.disc-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
 .disc-section-sub {
   margin: 0.35rem 0 0;
   color: var(--muted);
@@ -5419,24 +5431,28 @@ th {
 
 /* ─── Post Cards ───────────────────────── */
 
-.disc-posts-list {
-  display: grid;
-  gap: 0.65rem;
+.disc-posts-list.panel {
+  padding: 0;
+  overflow: hidden;
+  gap: 0;
 }
 
 .disc-post-card {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.9rem;
-  padding: 1rem 1.2rem;
-  cursor: pointer;
-  transition: transform 100ms ease, box-shadow 100ms ease, border-color 100ms ease;
+  padding: 1.25rem 1.5rem;
+  cursor: default;
+  border-bottom: 1px solid var(--line);
+  transition: background-color 150ms ease;
+}
+
+.disc-post-card:last-child {
+  border-bottom: none;
 }
 
 .disc-post-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
-  border-color: color-mix(in hsl, var(--accent) 30%, var(--line) 70%);
+  background-color: color-mix(in srgb, var(--accent) 3%, var(--card));
 }
 
 .disc-post-left {
@@ -5498,26 +5514,54 @@ th {
 .disc-post-preview {
   margin: 0;
   color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.5;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.is-expanded .disc-post-preview {
+  color: var(--ink);
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
 }
 
 .disc-post-footer {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
-  margin-top: 0.15rem;
+  gap: 1rem;
+  margin-top: 0.4rem;
 }
 
-.disc-reply-count {
-  color: var(--muted);
+.disc-footer-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.55rem;
+  margin-left: -0.55rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
   font-size: 0.82rem;
-  font-weight: 600;
+  color: var(--muted);
+  transition: all 120ms ease;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.disc-footer-btn:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+  color: var(--accent);
+}
+
+.disc-reply-toggle.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+
+.disc-action-reply {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--card));
 }
 
 /* ─── Voting ───────────────────────────── */
@@ -5864,44 +5908,7 @@ th {
   margin-top: 0.2rem;
 }
 
-/* Reply Composer */
-
-.disc-reply-composer {
-  display: grid;
-  gap: 0.45rem;
-  margin-top: 0.5rem;
-}
-
-.disc-reply-textarea {
-  width: 100%;
-  border: 1px solid var(--line-strong);
-  border-radius: 0.7rem;
-  background: color-mix(in hsl, var(--card) 70%, white 30%);
-  color: var(--ink);
-  font-size: 0.88rem;
-  font-family: inherit;
-  padding: 0.65rem 0.8rem;
-  resize: vertical;
-  min-height: 60px;
-  line-height: 1.5;
-}
-
-.disc-reply-textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in hsl, var(--accent) 12%, transparent);
-}
-
-.disc-reply-composer-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.45rem;
-}
-
-.disc-reply-submit {
-  padding: 0.45rem 0.85rem;
-  font-size: 0.82rem;
-}
+/* Redundant inline styles removed - using Modal for replies */
 
 .disc-login-prompt {
   margin: 0;
@@ -5922,12 +5929,28 @@ th {
   text-decoration: underline;
 }
 
-.disc-no-replies {
+.disc-no-replies-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1.25rem 0.5rem;
+  text-align: center;
+  background: color-mix(in srgb, var(--bg) 40%, transparent);
+  border-radius: 0.85rem;
+}
+
+.disc-no-replies-sm {
   margin: 0;
   color: var(--muted);
-  font-size: 0.88rem;
-  font-style: italic;
-  padding: 0.6rem 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.disc-reply-now-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.82rem;
+  height: auto;
 }
 
 /* ─── Loading / Empty ──────────────────── */

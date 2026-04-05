@@ -77,10 +77,6 @@ export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProp
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Thread view
-  const [activeThread, setActiveThread] = useState<DiscussionPost | null>(null)
-  const [isLoadingThread, setIsLoadingThread] = useState(false)
-
   // Compose new post
   const [showCompose, setShowCompose] = useState(false)
   const [composeTitle, setComposeTitle] = useState('')
@@ -105,18 +101,6 @@ export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProp
   useEffect(() => {
     loadPosts()
   }, [loadPosts])
-
-  const openThread = useCallback(async (postId: number) => {
-    setIsLoadingThread(true)
-    try {
-      const thread = await fetchDiscussionThread(ticker, postId)
-      setActiveThread(thread)
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load thread.')
-    } finally {
-      setIsLoadingThread(false)
-    }
-  }, [ticker])
 
   const handleCreatePost = useCallback(async () => {
     if (!composeTitle.trim() || !composeBody.trim()) {
@@ -150,138 +134,28 @@ export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProp
           ? { ...p, upvotes: result.upvotes, downvotes: result.downvotes, userVote: result.userVote }
           : p
       ))
-      // Update in active thread
-      if (activeThread?.id === postId) {
-        setActiveThread(prev =>
-          prev ? { ...prev, upvotes: result.upvotes, downvotes: result.downvotes, userVote: result.userVote } : prev
-        )
-      }
     } catch { /* silent */ }
-  }, [user, activeThread])
+  }, [user])
 
   const handleDeletePost = useCallback(async (postId: number) => {
     if (!user) return
     try {
       await deleteDiscussionPost(ticker, postId)
-      if (activeThread?.id === postId) {
-        setActiveThread(null)
-      }
       setPosts(prev => prev.filter(p => p.id !== postId))
     } catch { /* silent */ }
-  }, [user, ticker, activeThread])
+  }, [user, ticker])
 
-  const handleReplyCreated = useCallback(async () => {
-    if (!activeThread) return
-    // Reload full thread to get updated replies
-    const thread = await fetchDiscussionThread(ticker, activeThread.id)
-    setActiveThread(thread)
-    // Also update reply count in list
-    setPosts(prev => prev.map(p =>
-      p.id === thread.id ? { ...p, replyCount: thread.replies?.length ?? p.replyCount } : p
+  const syncPost = useCallback((updatedPost: DiscussionPost) => {
+    setPosts(prev => prev.map(p => 
+      p.id === updatedPost.id ? { ...p, ...updatedPost } : p
     ))
-  }, [activeThread, ticker])
-
-  // ─── Thread Detail View ──────────────────────
-
-  if (activeThread) {
-    return (
-      <div className={`disc-layout reveal theme-${theme}`}>
-        <div className="disc-thread-header">
-          <button
-            type="button"
-            className="disc-back-btn"
-            onClick={() => setActiveThread(null)}
-          >
-            ← Back to Discussions
-          </button>
-        </div>
-
-        {isLoadingThread ? (
-          <div className="disc-loading">
-            <div className="disc-spinner" />
-            <p>Loading thread...</p>
-          </div>
-        ) : (
-          <div className="disc-thread">
-            <div className="disc-thread-post panel">
-              <div className="disc-post-meta">
-                <span
-                  className="disc-avatar"
-                  style={{ backgroundColor: avatarColor(activeThread.author.id) }}
-                >
-                  {userInitial(activeThread.author.username)}
-                </span>
-                <span className="disc-author">{activeThread.author.username}</span>
-                <span className="disc-time">{relativeTime(activeThread.createdAt)}</span>
-              </div>
-              <h2 className="disc-thread-title">{activeThread.title}</h2>
-              <p className="disc-thread-body">{activeThread.body}</p>
-              <div className="disc-post-actions">
-                <VoteButtons
-                  upvotes={activeThread.upvotes}
-                  downvotes={activeThread.downvotes}
-                  userVote={activeThread.userVote}
-                  onVote={(v) => handleVotePost(activeThread.id, v)}
-                  disabled={!user}
-                />
-                {user?.id === activeThread.author.id && (
-                  <button
-                    type="button"
-                    className="disc-delete-btn"
-                    onClick={() => handleDeletePost(activeThread.id)}
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="disc-replies-section">
-              <h3 className="disc-replies-heading">
-                {activeThread.replies?.length ?? 0} {(activeThread.replies?.length ?? 0) === 1 ? 'Reply' : 'Replies'}
-              </h3>
-
-              {user ? (
-                <ReplyComposer
-                  ticker={ticker}
-                  postId={activeThread.id}
-                  onReplyCreated={handleReplyCreated}
-                />
-              ) : (
-                <p className="disc-login-prompt">
-                  <a href="/login">Log in</a> to reply to this discussion.
-                </p>
-              )}
-
-              {activeThread.replies && activeThread.replies.length > 0 ? (
-                <div className="disc-reply-list">
-                  {activeThread.replies.map((reply) => (
-                    <ReplyNode
-                      key={reply.id}
-                      reply={reply}
-                      ticker={ticker}
-                      postId={activeThread.id}
-                      user={user}
-                      depth={0}
-                      onReplyCreated={handleReplyCreated}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p className="disc-no-replies">No replies yet. Be the first to respond!</p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
+  }, [])
 
   // ─── Posts List View ─────────────────────────
 
   return (
-    <div className={`disc-layout reveal theme-${theme}`}>
-      <div className="disc-header panel">
+    <div className={`disc-layout reveal theme-${theme} panel`}>
+      <div className="disc-header">
         <div className="disc-header-top">
           <div>
             <h2 className="disc-section-title">
@@ -328,7 +202,7 @@ export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProp
         </div>
       </div>
 
-      {/* Compose Modal */}
+      {/* Compose Post Modal */}
       {showCompose && createPortal(
         <div className="disc-compose-overlay" onClick={() => setShowCompose(false)}>
           <div className="disc-compose-card panel" onClick={(e) => e.stopPropagation()}>
@@ -396,7 +270,7 @@ export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProp
 
       {/* Posts */}
       {!isLoading && !error && posts.length === 0 && (
-        <div className="disc-empty panel">
+        <div className="disc-empty">
           <span className="disc-empty-icon" aria-hidden="true">📭</span>
           <h3>No discussions yet for {ticker}</h3>
           <p>Be the first to start a conversation!</p>
@@ -419,9 +293,10 @@ export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProp
               key={post.id}
               post={post}
               user={user}
-              onOpen={() => openThread(post.id)}
+              ticker={ticker}
               onVote={(v) => handleVotePost(post.id, v)}
               onDelete={() => handleDeletePost(post.id)}
+              onSync={syncPost}
             />
           ))}
         </div>
@@ -458,18 +333,55 @@ export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProp
 function PostCard({
   post,
   user,
-  onOpen,
+  ticker,
   onVote,
   onDelete,
+  onSync,
 }: {
   post: DiscussionPost
   user: AuthUser | null
-  onOpen: () => void
+  ticker: string
   onVote: (v: 1 | -1) => void
   onDelete: () => void
+  onSync: (p: DiscussionPost) => void
 }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [replies, setReplies] = useState<DiscussionReply[]>([])
+  const [isLoadingReplies, setIsLoadingReplies] = useState(false)
+  const [hasFetched, setHasFetched] = useState(false)
+  const [error, setError] = useState('')
+  const [showReplyModal, setShowReplyModal] = useState(false)
+
+  const loadReplies = useCallback(async () => {
+    setIsLoadingReplies(true)
+    setError('')
+    try {
+      const thread = await fetchDiscussionThread(ticker, post.id)
+      setReplies(thread.replies || [])
+      onSync(thread)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load replies.')
+    } finally {
+      setIsLoadingReplies(false)
+      setHasFetched(true)
+    }
+  }, [ticker, post.id])
+
+  useEffect(() => {
+    if (isExpanded && !hasFetched && !isLoadingReplies) {
+      loadReplies()
+    }
+  }, [isExpanded, hasFetched, isLoadingReplies, loadReplies])
+
+  const toggleExpand = () => setIsExpanded(!isExpanded)
+
+  const handleReplyCreated = useCallback(async () => {
+    await loadReplies()
+    setShowReplyModal(false)
+  }, [loadReplies])
+
   return (
-    <article className="disc-post-card panel" onClick={onOpen}>
+    <article className={`disc-post-card ${isExpanded ? 'is-expanded' : ''}`}>
       <div className="disc-post-left">
         <VoteButtons
           upvotes={post.upvotes}
@@ -493,12 +405,27 @@ function PostCard({
         </div>
         <h3 className="disc-post-title">{post.title}</h3>
         <p className="disc-post-preview">
-          {post.body.length > 180 ? post.body.slice(0, 180) + '…' : post.body}
+          {isExpanded ? post.body : (post.body.length > 180 ? post.body.slice(0, 180) + '…' : post.body)}
         </p>
         <div className="disc-post-footer">
-          <span className="disc-reply-count">
+          <button
+            type="button"
+            className={`disc-footer-btn disc-reply-toggle ${isExpanded ? 'active' : ''}`}
+            onClick={toggleExpand}
+          >
             💬 {post.replyCount} {post.replyCount === 1 ? 'reply' : 'replies'}
-          </span>
+          </button>
+          
+          {isExpanded && user && (
+            <button
+              type="button"
+              className="disc-footer-btn disc-action-reply"
+              onClick={() => setShowReplyModal(true)}
+            >
+              Reply
+            </button>
+          )}
+
           {user?.id === post.author.id && (
             <button
               type="button"
@@ -512,7 +439,59 @@ function PostCard({
             </button>
           )}
         </div>
+
+        {/* Expanded Replies Section */}
+        {isExpanded && (
+          <div className="disc-post-expanded reveal">
+            {isLoadingReplies ? (
+              <div className="disc-loading-sm">
+                <div className="disc-spinner-sm" />
+                <span>Loading conversation...</span>
+              </div>
+            ) : error ? (
+              <p className="disc-error-sm">{error}</p>
+            ) : (
+              <div className="disc-replies-inline">
+                {replies.length > 0 ? (
+                  replies.map((reply) => (
+                    <ReplyNode
+                      key={reply.id}
+                      reply={reply}
+                      ticker={ticker}
+                      postId={post.id}
+                      user={user}
+                      depth={0}
+                      onReplyCreated={loadReplies}
+                    />
+                  ))
+                ) : (
+                  <div className="disc-no-replies-box">
+                    <p className="disc-no-replies-sm">No replies yet. Be the first to share your thoughts!</p>
+                    {user && (
+                      <button 
+                        type="button" 
+                        className="disc-new-post-btn disc-reply-now-btn"
+                        onClick={() => setShowReplyModal(true)}
+                      >
+                        Write a Reply
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {showReplyModal && (
+        <ReplyComposer
+          ticker={ticker}
+          postId={post.id}
+          onReplyCreated={handleReplyCreated}
+          onCancel={() => setShowReplyModal(false)}
+        />
+      )}
     </article>
   )
 }
@@ -595,32 +574,39 @@ function ReplyComposer({
     }
   }, [body, ticker, postId, parentReplyId, onReplyCreated])
 
-  return (
-    <div className="disc-reply-composer">
-      <textarea
-        placeholder="Write a reply..."
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        className="disc-reply-textarea"
-        rows={3}
-      />
-      {error && <p className="disc-compose-error">{error}</p>}
-      <div className="disc-reply-composer-actions">
-        {onCancel && (
-          <button type="button" className="disc-compose-cancel" onClick={onCancel}>
-            Cancel
+  return createPortal(
+    <div className="disc-compose-overlay" onClick={onCancel}>
+      <div className="disc-compose-card panel" onClick={(e) => e.stopPropagation()}>
+        <h3>Reply to discussion</h3>
+        <div className="disc-compose-field">
+          <textarea
+            placeholder="Write your reply..."
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            className="disc-compose-textarea"
+            rows={6}
+            autoFocus
+          />
+        </div>
+        {error && <p className="disc-compose-error">{error}</p>}
+        <div className="disc-compose-actions">
+          {onCancel && (
+            <button type="button" className="disc-compose-cancel" onClick={onCancel}>
+              Cancel
+            </button>
+          )}
+          <button
+            type="button"
+            className="disc-compose-submit"
+            onClick={handleSubmit}
+            disabled={isSubmitting || !body.trim()}
+          >
+            {isSubmitting ? 'Posting...' : 'Post Reply'}
           </button>
-        )}
-        <button
-          type="button"
-          className="disc-compose-submit disc-reply-submit"
-          onClick={handleSubmit}
-          disabled={isSubmitting || !body.trim()}
-        >
-          {isSubmitting ? 'Posting...' : 'Reply'}
-        </button>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

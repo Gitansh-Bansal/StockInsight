@@ -54,7 +54,7 @@ def _annotate_post_votes(qs, user):
     ).order_by().values("post").annotate(cnt=Count("pk")).values("cnt")
     
     reply_count_sq = DiscussionReply.objects.filter(
-        post=OuterRef("pk")
+        post=OuterRef("pk"), parent__isnull=True
     ).order_by().values("post").annotate(cnt=Count("pk")).values("cnt")
 
     qs = qs.annotate(
