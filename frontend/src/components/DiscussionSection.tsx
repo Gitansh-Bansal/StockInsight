@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   createDiscussionPost,
   createDiscussionReply,
@@ -328,7 +329,7 @@ export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProp
       </div>
 
       {/* Compose Modal */}
-      {showCompose && (
+      {showCompose && createPortal(
         <div className="disc-compose-overlay" onClick={() => setShowCompose(false)}>
           <div className="disc-compose-card panel" onClick={(e) => e.stopPropagation()}>
             <h3>Start a new discussion about {ticker}</h3>
@@ -372,7 +373,8 @@ export function DiscussionSection({ ticker, user, theme }: DiscussionSectionProp
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Loading */}

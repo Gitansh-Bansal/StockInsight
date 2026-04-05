@@ -1017,7 +1017,7 @@ function AnalysisPage({ ticker, tab, user, theme, onTabChange }: AnalysisPagePro
         ))}
       </nav>
 
-      {isLoading && <LoadingPanel tab={tab} />}
+      {isLoading && tab !== 'discussion' && <LoadingPanel tab={tab} />}
 
       {!isLoading && error && (
         <div className="error-card reveal">
