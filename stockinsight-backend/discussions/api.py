@@ -45,14 +45,28 @@ def _serialize_user(user) -> dict:
 
 def _annotate_post_votes(qs, user):
     """Annotate a DiscussionPost queryset with vote counts and user's vote in bulk."""
+    upvotes_sq = Vote.objects.filter(
+        post=OuterRef("pk"), value=1
+    ).order_by().values("post").annotate(cnt=Count("pk")).values("cnt")
+    
+    downvotes_sq = Vote.objects.filter(
+        post=OuterRef("pk"), value=-1
+    ).order_by().values("post").annotate(cnt=Count("pk")).values("cnt")
+    
+    reply_count_sq = DiscussionReply.objects.filter(
+        post=OuterRef("pk")
+    ).order_by().values("post").annotate(cnt=Count("pk")).values("cnt")
+
     qs = qs.annotate(
         _upvotes=Coalesce(
-            Sum("votes__value", filter=Q(votes__value=1)), Value(0)
+            Subquery(upvotes_sq, output_field=IntegerField()), Value(0)
         ),
         _downvotes=Coalesce(
-            Sum("votes__value", filter=Q(votes__value=-1)), Value(0)
+            Subquery(downvotes_sq, output_field=IntegerField()), Value(0)
         ),
-        _reply_count=Count("replies", distinct=True),
+        _reply_count=Coalesce(
+            Subquery(reply_count_sq, output_field=IntegerField()), Value(0)
+        ),
     )
 
     if user.is_authenticated:
@@ -93,15 +107,23 @@ def _serialize_annotated_post(post, *, include_replies: bool = False, user=None)
 
 def _get_replies_for_post(post, user) -> list[dict]:
     """Fetch and serialize all replies for a post in 2-3 queries total."""
+    upvotes_sq = Vote.objects.filter(
+        reply=OuterRef("pk"), value=1
+    ).order_by().values("reply").annotate(cnt=Count("pk")).values("cnt")
+
+    downvotes_sq = Vote.objects.filter(
+        reply=OuterRef("pk"), value=-1
+    ).order_by().values("reply").annotate(cnt=Count("pk")).values("cnt")
+
     replies_qs = (
         DiscussionReply.objects.filter(post=post)
         .select_related("author")
         .annotate(
             _upvotes=Coalesce(
-                Sum("votes__value", filter=Q(votes__value=1)), Value(0)
+                Subquery(upvotes_sq, output_field=IntegerField()), Value(0)
             ),
             _downvotes=Coalesce(
-                Sum("votes__value", filter=Q(votes__value=-1)), Value(0)
+                Subquery(downvotes_sq, output_field=IntegerField()), Value(0)
             ),
         )
     )
