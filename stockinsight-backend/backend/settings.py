@@ -197,6 +197,18 @@ LOGGING = {
             "level": "INFO",
             "propagate": False,
         },
+        "httpx": {
+            "handlers": ["console"],
+            "level": "WARNING",
+        },
+        "huggingface_hub": {
+            "handlers": ["console"],
+            "level": "ERROR",
+        },
+        "transformers": {
+            "handlers": ["console"],
+            "level": "ERROR",
+        },
     },
 }
 
