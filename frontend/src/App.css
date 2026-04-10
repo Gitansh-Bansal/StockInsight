@@ -1284,15 +1284,18 @@ html.dark .top-bar .search-suggestions {
 }
 
 .full-report-consensus-chip.tone-positive {
-  background: #14532d;
+  background: #15803d; /* Green for BUY */
+  color: #ffffff;
 }
 
 .full-report-consensus-chip.tone-neutral {
-  background: #111827;
+  background: #d97706; /* Amber/Yellow for HOLD */
+  color: #ffffff;
 }
 
 .full-report-consensus-chip.tone-negative {
-  background: #dc2626;
+  background: #dc2626; /* Red for SELL */
+  color: #ffffff;
 }
 
 .full-report-main-grid {

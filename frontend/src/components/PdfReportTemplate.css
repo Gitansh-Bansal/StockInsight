@@ -1,219 +1,193 @@
 /* ═══════════════════════════════════════════════════════
-   PDF Report Template – A4 Layout (794 × 1123 px @96dpi)
+   PDF Report Template – A4 Multi-Page Layout
+   794 × 1122 px per page @96dpi
    ═══════════════════════════════════════════════════════ */
 
-.pdf-report-root {
+/* Hidden wrapper holding all pages */
+.pdf-wrapper {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: -1;
   width: 794px;
-  min-height: 1123px;
-  background: #ffffff;
-  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-  color: #1a1a2e;
+}
+
+/* Each A4 page */
+.pdf-page {
+  width: 794px;
+  height: 1122px;
+  background: #0d1b2e;
+  font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  color: #e2e8f0;
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.4;
   position: absolute;
   left: -9999px;
   top: 0;
   z-index: -1;
   overflow: hidden;
   box-sizing: border-box;
+  padding: 16px; /* Outer margin */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.pdf-report-root *,
-.pdf-report-root *::before,
-.pdf-report-root *::after {
+.pdf-page *,
+.pdf-page *::before,
+.pdf-page *::after {
   box-sizing: border-box;
+}
+
+/* ── Generic Card Style ────────────────────────────── */
+
+.pdf-card {
+  background: #112240;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #1e3a5f;
+}
+
+.pdf-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #7dd3fc;
+  margin: 0 0 8px 0;
 }
 
 /* ── Header Strip ──────────────────────────────────── */
 
-.pdf-header {
+.pdf-header-wrapper {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  color: #ffffff;
-  padding: 16px 24px;
   gap: 12px;
 }
 
-.pdf-header-left {
+.pdf-header-card {
+  background: #112240;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  border: 1px solid #1e3a5f;
+}
+
+.pdf-header-company-wrap {
+  flex: 2;
+}
+
+.pdf-header-stat-wrap {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  justify-content: center;
+  align-items: flex-start; /* Left-aligned like the photo */
 }
 
 .pdf-header-company {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 20px;
+  font-weight: 800;
+  color: #e0f2fe;
+  display: block;
+  line-height: 1.1;
+  margin-bottom: 2px;
 }
 
 .pdf-header-exchange {
-  font-size: 10px;
-  font-weight: 500;
-  color: #94a3b8;
+  font-size: 11px;
+  color: #7dd3fc;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.pdf-header-center {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
 }
 
 .pdf-header-price {
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 800;
+  color: #e0f2fe;
 }
-
 .pdf-header-change {
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.pdf-header-change.positive {
-  color: #4ade80;
-}
-
-.pdf-header-change.negative {
-  color: #f87171;
-}
-
-.pdf-header-change.neutral {
-  color: #94a3b8;
-}
-
-.pdf-header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.pdf-header-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 6px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.pdf-header-stat .label {
-  font-size: 8px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #94a3b8;
-}
-
-.pdf-header-stat .value {
   font-size: 13px;
   font-weight: 700;
+  margin-left: 0;
+}
+.pdf-header-change.positive { color: #16a34a; } /* In the image, green for positive or red for negative */
+.pdf-header-change.negative { color: #dc2626; } 
+
+.pdf-stat-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  font-weight: 700;
+  margin-bottom: 2px;
 }
 
-.pdf-consensus-chip {
-  display: inline-flex;
+.pdf-stat-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: #f0f9ff;
+}
+
+.pdf-consensus-badge {
+  color: #16a34a;
+  font-size: 18px;
+  font-weight: 800;
+  display: flex;
   align-items: center;
   gap: 4px;
-  font-weight: 700;
-  font-size: 13px;
 }
-
-.pdf-consensus-chip.tone-positive {
-  color: #4ade80;
-}
-
-.pdf-consensus-chip.tone-negative {
-  color: #f87171;
-}
-
-.pdf-consensus-chip.tone-neutral {
-  color: #fbbf24;
-}
-
-.pdf-consensus-icon {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  position: relative;
-}
-
-.pdf-consensus-icon::after {
-  content: '✓';
-  font-size: 9px;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
+.pdf-consensus-badge.tone-positive { color: #15803d; } /* Green for BUY */
+.pdf-consensus-badge.tone-negative { color: #dc2626; } /* Red for SELL */
+.pdf-consensus-badge.tone-neutral { color: #d97706; }  /* Amber for HOLD */
 
 /* ── Executive Briefing ────────────────────────────── */
-
-.pdf-executive {
-  padding: 14px 24px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.pdf-executive h3 {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #334155;
-  margin: 0 0 6px 0;
-  padding-bottom: 4px;
-  border-bottom: 2px solid #2563eb;
-  display: inline-block;
-}
-
-.pdf-executive p {
+.pdf-exec-brief {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #cbd5e1;
   margin: 0;
-  font-size: 10px;
-  line-height: 1.55;
-  color: #334155;
+  text-align: justify;
 }
 
-/* ── Two-Column Mid Grid ───────────────────────────── */
+/* ── Two-Column Row (Revenue/Metrics & Share/Ownership) ── */
 
-.pdf-mid-grid {
+.pdf-row-2col {
+  display: flex;
+  gap: 12px;
+}
+
+.pdf-row-2col-even {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-bottom: 1px solid #e2e8f0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.pdf-mid-grid > * {
-  padding: 14px 24px;
+.pdf-revenue-card {
+  flex: 0.45; /* Decreased space to give table more room */
 }
 
-.pdf-mid-grid > *:first-child {
-  border-right: 1px solid #e2e8f0;
+.pdf-metrics-card {
+  flex: 0.55; /* Increased space to prevent value cutoff */
 }
 
-/* ── Revenue Chart ─────────────────────────────────── */
-
-.pdf-revenue-section h4,
-.pdf-metrics-section h4,
-.pdf-share-section h4,
-.pdf-ownership-section h4 {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #334155;
-  margin: 0 0 12px 0;
+.pdf-share-card {
+  flex: 0.55;
 }
 
+.pdf-ownership-card {
+  flex: 0.45;
+}
+
+/* Revenue Chart */
 .pdf-revenue-chart {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
-  height: 120px;
-  padding-top: 8px;
+  gap: 14px;
+  height: 130px;
+  margin-top: auto;
 }
 
 .pdf-revenue-col {
@@ -223,291 +197,402 @@
   flex: 1;
   height: 100%;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 6px;
 }
 
 .pdf-revenue-bar-group {
   display: flex;
-  gap: 3px;
+  gap: 4px;
   align-items: flex-end;
   width: 100%;
+  height: 100%; /* REQUIRED for % heights to work */
   justify-content: center;
 }
 
 .pdf-revenue-bar {
-  width: 18px;
-  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
-  border-radius: 3px 3px 0 0;
-  min-height: 4px;
+  width: 22px;
+  background: #38bdf8;
+  border-radius: 4px 4px 0 0;
 }
 
 .pdf-profit-bar {
-  width: 18px;
-  background: linear-gradient(180deg, #34d399 0%, #059669 100%);
-  border-radius: 3px 3px 0 0;
-  min-height: 4px;
+  width: 22px;
+  background: #22c55e;
+  border-radius: 4px 4px 0 0;
 }
 
 .pdf-revenue-year {
-  font-size: 9px;
-  color: #64748b;
-  font-weight: 600;
+  font-size: 10px;
+  color: #93c5fd;
+  font-weight: 700;
 }
 
-.pdf-revenue-legend {
-  display: flex;
-  gap: 16px;
-  margin-top: 10px;
-  font-size: 9px;
-  color: #64748b;
-}
-
-.pdf-revenue-legend i {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  margin-right: 4px;
-  vertical-align: middle;
-}
-
-.pdf-revenue-legend i.revenue {
-  background: #2563eb;
-}
-
-.pdf-revenue-legend i.profit {
-  background: #059669;
-}
-
-/* ── Key Performance Metrics ───────────────────────── */
-
-.pdf-metrics-table {
+/* Metrics / Ownership Table */
+.pdf-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 10px;
+  font-size: 8px; /* Extremely compact */
 }
 
-.pdf-metrics-table th {
+.pdf-table th {
   text-align: right;
-  font-weight: 600;
-  color: #64748b;
-  padding: 4px 0;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: #7dd3fc;
+  padding: 3px 4px;
+  background: #0d1b2e;
+  border-bottom: 2px solid #1e3a5f;
 }
 
-.pdf-metrics-table th:first-child {
-  text-align: left;
+.pdf-table th:first-child { text-align: left; }
+
+.pdf-table td {
+  padding: 3px 4px;
+  border-bottom: 1px solid #1e3a5f;
+  background: #112240;
+  color: #e2e8f0;
 }
 
-.pdf-metrics-table td {
-  padding: 5px 0;
-  border-bottom: 1px solid #f1f5f9;
+/* Photo-matched bordered variant */
+.pdf-table-bordered th, .pdf-table-bordered td {
+  border: 1px solid #1e3a5f;
+  color: #e2e8f0;
+}
+.pdf-table-bordered th {
+  background: #0d1b2e;
+}
+.pdf-table-bordered tbody tr:nth-child(even) td {
+  background: #0f2040;
+}
+.pdf-table-bordered tbody tr:nth-child(odd) td {
+  background: #112240;
 }
 
-.pdf-metrics-table td:first-child {
-  font-weight: 500;
-  color: #334155;
+/* Striped rows for metrics based on the image */
+.pdf-table tr:nth-child(even) td {
+  background: #0f2040;
 }
 
-.pdf-metrics-table td:nth-child(2),
-.pdf-metrics-table td:nth-child(3) {
-  text-align: right;
-  font-weight: 600;
-  color: #1e293b;
-}
+.pdf-table td:first-child { color: #93c5fd; font-weight: 500; }
+.pdf-table td:nth-child(n+2) { text-align: right; font-weight: 700; color: #e0f2fe; }
 
-/* ── Shareholding Pattern ──────────────────────────── */
-
-.pdf-share-section {
-  display: flex;
-  flex-direction: column;
-}
-
+/* Shareholding Ring */
 .pdf-share-content {
   display: flex;
-  gap: 16px;
   align-items: center;
-}
-
-.pdf-share-ring-wrap {
-  width: 110px;
-  height: 110px;
-  flex-shrink: 0;
+  gap: 20px;
+  margin: auto 0;
 }
 
 .pdf-share-legend {
   list-style: none;
   padding: 0;
   margin: 0;
-  font-size: 9.5px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
 }
 
 .pdf-share-legend li {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 0;
+  gap: 8px;
 }
 
 .pdf-share-legend i {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
   display: inline-block;
-  flex-shrink: 0;
 }
-
-.pdf-share-legend i.institutional { background: #0c4ab8; }
-.pdf-share-legend i.retail { background: #afc1ff; }
-.pdf-share-legend i.promoter { background: #d8dfee; }
-
-.pdf-share-legend span {
-  color: #475569;
-}
-
-.pdf-share-legend strong {
-  margin-left: auto;
-  color: #1e293b;
-}
-
-/* ── Ownership Insights ────────────────────────────── */
-
-.pdf-ownership-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10px;
-}
-
-.pdf-ownership-table td {
-  padding: 5px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.pdf-ownership-table td:first-child {
-  color: #475569;
-  font-weight: 500;
-}
-
-.pdf-ownership-table td:nth-child(2) {
-  text-align: right;
-  font-weight: 600;
-  color: #1e293b;
-}
+.pdf-share-legend i.institutional { background: #38bdf8; }
+.pdf-share-legend i.retail { background: #22c55e; }
+.pdf-share-legend i.promoter { background: #fbbf24; }
+.pdf-share-legend span { color: #cbd5e1; font-weight: 500; }
 
 /* ── Three-Column Summary Grid ─────────────────────── */
 
-.pdf-summary-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  border-bottom: 1px solid #e2e8f0;
+.pdf-row-3col {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.pdf-summary-card {
-  padding: 14px 18px;
-  border-right: 1px solid #e2e8f0;
-}
-
-.pdf-summary-card:last-child {
-  border-right: none;
-}
-
-.pdf-summary-card h4 {
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #334155;
-  margin: 0 0 10px 0;
-  padding: 5px 10px;
-  background: #f1f5f9;
-  border-radius: 4px;
-  border-left: 3px solid #2563eb;
-  text-align: center;
+.pdf-row-3col > * {
+  flex: 1;
 }
 
 .pdf-summary-gauge {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 10px;
+  text-align: center;
+  width: 100%;
+  margin: 12px 0;
+}
+
+.pdf-summary-gauge svg {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.pdf-summary-card .pdf-card-title {
+  text-align: center;
 }
 
 .pdf-summary-text {
-  font-size: 9px;
-  line-height: 1.5;
-  color: #475569;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #93c5fd;
   margin: 0;
+  text-align: justify;
 }
 
-/* ── Risk Factors ──────────────────────────────────── */
-
-.pdf-risk-section {
-  padding: 14px 24px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.pdf-risk-section h3 {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #334155;
-  margin: 0 0 8px 0;
-  padding-bottom: 4px;
-  border-bottom: 2px solid #ef4444;
-  display: inline-block;
-}
+/* ── Risk Factors (4 Columns) ──────────────────────── */
 
 .pdf-risk-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px 20px;
+  display: flex;
+  gap: 16px;
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-.pdf-risk-list li {
-  font-size: 9px;
-  line-height: 1.45;
-  color: #475569;
-  padding: 3px 0;
-  padding-left: 12px;
+.pdf-risk-list > li {
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #cbd5e1;
   position: relative;
+  padding-left: 10px;
 }
 
 .pdf-risk-list li::before {
   content: '•';
   position: absolute;
   left: 0;
-  color: #ef4444;
-  font-weight: 700;
-  font-size: 12px;
-  line-height: 1;
-  top: 3px;
+  top: 0;
+  color: #38bdf8;
+  font-weight: 900;
+  font-size: 14px;
 }
 
-/* ── Footer ────────────────────────────────────────── */
+/* ── Detail Page Specific Styles ──────────────────── */
 
-.pdf-footer {
+.pdf-page-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 10px 24px;
-  background: #f8fafc;
-  border-top: 1px solid #e2e8f0;
+  justify-content: space-between;
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 10px 16px;
+  color: #ffffff;
+}
+
+.pdf-page-header-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #ffffff;
+}
+
+.pdf-page-header-meta {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.pdf-score-pill {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.pdf-score-pill.positive { background: #16a34a; color: #fff; }
+.pdf-score-pill.neutral  { background: #d97706; color: #fff; }
+.pdf-score-pill.negative { background: #dc2626; color: #fff; }
+
+/* Indicator grid */
+.pdf-indicator-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.pdf-indicator-tile {
+  background: #0d1b2e;
+  border: 1px solid #1e3a5f;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.pdf-indicator-tile-label {
+  font-size: 8px;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.pdf-indicator-tile-value {
+  font-size: 14px;
+  font-weight: 800;
+  color: #e0f2fe;
+}
+
+.pdf-indicator-tile-sub {
   font-size: 8px;
   color: #94a3b8;
+  margin-top: 1px;
 }
 
-.pdf-footer-brand {
-  font-weight: 700;
-  color: #64748b;
+/* Signal badge */
+.pdf-signal-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-left: 4px;
+}
+.pdf-signal-badge.bullish  { background: #dcfce7; color: #15803d; }
+.pdf-signal-badge.bearish  { background: #fee2e2; color: #dc2626; }
+.pdf-signal-badge.neutral  { background: #fef9c3; color: #92400e; }
+
+/* Headline rows (sentiment) */
+.pdf-headline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #1e3a5f;
+  font-size: 9px;
 }
 
-.pdf-footer-disclaimer {
-  font-style: italic;
-  max-width: 400px;
+.pdf-headline-row:last-child { border-bottom: none; }
+
+.pdf-headline-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.pdf-headline-dot.positive { background: #16a34a; }
+.pdf-headline-dot.negative { background: #dc2626; }
+.pdf-headline-dot.neutral  { background: #d97706; }
+
+.pdf-headline-text {
+  flex: 1;
+  color: #cbd5e1;
+  line-height: 1.35;
+}
+
+.pdf-headline-src {
+  font-size: 8px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+/* Valuation ratio cards */
+.pdf-ratio-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.pdf-ratio-tile {
+  background: #0d1b2e;
+  border: 1px solid #1e3a5f;
+  border-radius: 8px;
+  padding: 8px 10px;
   text-align: center;
+}
+
+.pdf-ratio-label {
+  font-size: 8px;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.pdf-ratio-value {
+  font-size: 16px;
+  font-weight: 800;
+  color: #e0f2fe;
+}
+
+.pdf-ratio-sub {
+  font-size: 8px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+/* Margin trend bars */
+.pdf-margin-bars {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  height: 80px;
+  margin-top: 6px;
+}
+
+.pdf-margin-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.pdf-margin-bar {
+  width: 18px;
+  background: #6366f1;
+  border-radius: 3px 3px 0 0;
+  min-height: 4px;
+}
+
+.pdf-margin-label {
+  font-size: 8px;
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+/* Sentiment count pills */
+.pdf-sent-counts {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.pdf-sent-pill {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  text-align: center;
+}
+.pdf-sent-pill.pos { background: #dcfce7; }
+.pdf-sent-pill.neu { background: #fef9c3; }
+.pdf-sent-pill.neg { background: #fee2e2; }
+
+.pdf-sent-pill-num {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+.pdf-sent-pill.pos .pdf-sent-pill-num { color: #15803d; }
+.pdf-sent-pill.neu .pdf-sent-pill-num { color: #92400e; }
+.pdf-sent-pill.neg .pdf-sent-pill-num { color: #dc2626; }
+
+.pdf-sent-pill-label {
+  font-size: 8px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #475569;
+  margin-top: 2px;
 }

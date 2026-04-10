@@ -3135,75 +3135,55 @@ function FullReportSection({
   const [isDownloading, setIsDownloading] = useState(false)
 
   const handleDownloadPdf = useCallback(async () => {
-    const element = pdfRef.current
-    if (!element) return
+    const wrapper = pdfRef.current
+    if (!wrapper) return
     setIsDownloading(true)
     try {
       const html2canvas = (await import('html2canvas')).default
       const { jsPDF } = await import('jspdf')
 
-      // Temporarily make element visible for capture
-      element.style.position = 'absolute'
-      element.style.left = '0'
-      element.style.top = '0'
-      element.style.zIndex = '-1'
-      element.style.opacity = '1'
+      // Collect all individual page divs
+      const pages = Array.from(wrapper.querySelectorAll<HTMLElement>('.pdf-page'))
+      if (pages.length === 0) return
 
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        width: 794,
-        windowWidth: 794,
-      })
+      // Temporarily reveal wrapper
+      wrapper.style.position = 'absolute'
+      wrapper.style.left = '0'
+      wrapper.style.top = '0'
+      wrapper.style.zIndex = '9999'
+      wrapper.style.opacity = '1'
+
+      const pdfWidth = 210  // mm
+      const pdfHeight = 297 // mm A4
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i]
+        const canvas = await html2canvas(page, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#f0f3f8',
+          width: 794,
+          windowWidth: 1200,
+        })
+        const imgData = canvas.toDataURL('image/png')
+        const imgH = (canvas.height * pdfWidth) / canvas.width
+        if (i > 0) pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(imgH, pdfHeight))
+      }
 
       // Restore hidden position
-      element.style.left = '-9999px'
-      element.style.zIndex = '-1'
-
-      const imgData = canvas.toDataURL('image/png')
-      // A4: 210mm x 297mm
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-      const pdfWidth = 210
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width
-
-      // If content is taller than one page, scale to fit or add pages
-      const pageHeight = 297
-      if (pdfHeight <= pageHeight) {
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
-      } else {
-        // Multi-page: slice the canvas
-        let remainingHeight = canvas.height
-        let position = 0
-        const pageCanvasHeight = (pageHeight / pdfWidth) * canvas.width
-
-        while (remainingHeight > 0) {
-          const pageCanvas = document.createElement('canvas')
-          pageCanvas.width = canvas.width
-          const sliceHeight = Math.min(pageCanvasHeight, remainingHeight)
-          pageCanvas.height = sliceHeight
-          const ctx = pageCanvas.getContext('2d')
-          if (ctx) {
-            ctx.drawImage(
-              canvas,
-              0, position, canvas.width, sliceHeight,
-              0, 0, canvas.width, sliceHeight,
-            )
-          }
-          const pageImgData = pageCanvas.toDataURL('image/png')
-          const pageImgHeight = (sliceHeight * pdfWidth) / canvas.width
-
-          if (position > 0) pdf.addPage()
-          pdf.addImage(pageImgData, 'PNG', 0, 0, pdfWidth, pageImgHeight)
-
-          remainingHeight -= sliceHeight
-          position += sliceHeight
-        }
-      }
+      wrapper.style.left = '-9999px'
+      wrapper.style.zIndex = '-1'
+      wrapper.style.opacity = '1'
 
       pdf.save(`${analysis.ticker}_StockInsight_Report.pdf`)
     } catch (err) {
       console.error('PDF generation failed:', err)
+      if (pdfRef.current) {
+        pdfRef.current.style.left = '-9999px'
+        pdfRef.current.style.zIndex = '-1'
+      }
     } finally {
       setIsDownloading(false)
     }
@@ -3250,13 +3230,7 @@ function FullReportSection({
       ? 'positive'
       : 'negative'
 
-  const consensusRaw = (
-    fundamentalData?.recommendationKey ??
-    analysis.overview.verdict ??
-    'N/A'
-  ).trim()
-  const consensusLabel = consensusRaw ? consensusRaw.toUpperCase() : 'N/A'
-  const consensusTone = toneFromVerdict(consensusRaw)
+
   const targetPriceLabel = formatCurrency(fundamentalData?.targetMeanPrice, displayCurrency)
   const marketCapLabel = formatCompactMoney(fundamentalData?.marketCap, displayCurrency)
 
@@ -3693,9 +3667,9 @@ function FullReportSection({
         <div className="full-report-hero-right">
           <div className="full-report-consensus-box">
             <div>
-              <span className="label">Analyst Consensus</span>
-              <span className={`full-report-consensus-chip tone-${consensusTone}`}>
-                {consensusLabel}
+              <span className="label">Overall Insight Score</span>
+              <span className={`full-report-consensus-chip tone-${isFiniteNumber(analysis.overview.overallScore) ? (analysis.overview.overallScore >= 60 ? 'positive' : analysis.overview.overallScore >= 40 ? 'neutral' : 'negative') : 'neutral'}`}>
+                {isFiniteNumber(analysis.overview.overallScore) ? (analysis.overview.overallScore >= 60 ? 'BUY' : analysis.overview.overallScore >= 40 ? 'HOLD' : 'SELL') : 'N/A'}
               </span>
             </div>
             <div>
@@ -6144,9 +6118,9 @@ function resolveTechnicalData(
     sma20: legacy?.sma20 ?? indicators?.SMA20 ?? null,
     sma50: legacy?.sma50 ?? indicators?.SMA50 ?? null,
     rsi: legacy?.rsi ?? indicators?.RSI ?? null,
-    ['52WeekLow']: legacy?.['52WeekLow'] ?? indicators?.['52WeekLow'] ?? null,
+    ['52WeekLow']: (legacy as any)?.['52WeekLow'] ?? (indicators as any)?.['52WeekLow'] ?? null,
     ['52WeekHigh']:
-      legacy?.['52WeekHigh'] ?? indicators?.['52WeekHigh'] ?? null,
+      (legacy as any)?.['52WeekHigh'] ?? (indicators as any)?.['52WeekHigh'] ?? null,
     structure: result.structure,
   }
 }
