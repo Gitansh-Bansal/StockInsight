@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
   --ink: #0f172a;
@@ -16,9 +16,9 @@
   --bg: #f8fafc;
   --shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
   --shadow-lg: 0 4px 12px rgba(15, 23, 42, 0.05), 0 20px 48px rgba(15, 23, 42, 0.08);
-  --radius: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
+  --radius: 0.85rem;
+  --radius-lg: 0.85rem;
+  --radius-xl: 0.85rem;
   --chart-blue: #2563eb;
   --chart-green: #10b981;
   --chart-amber: #d97706;
@@ -26,7 +26,7 @@
   --chart-rose: #e11d48;
   --chart-slate: #94a3b8;
   --mono-font: 'IBM Plex Mono', 'Consolas', monospace;
-  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Geneva', 'Verdana', sans-serif;
   line-height: 1.5;
   font-weight: 450;
   color: var(--ink);
@@ -66,6 +66,10 @@ html.dark {
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+h1, h2, h3, h4, h5, h6, [class*="title"] {
+  font-family: 'Lucida Grande', 'Geneva', sans-serif;
 }
 
 ::selection {

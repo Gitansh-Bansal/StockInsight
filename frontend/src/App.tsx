@@ -257,7 +257,47 @@ function App() {
           <HomePage onSearch={handleSearch} onCompare={goCompare} user={authUser} />
         )}
       </main>
+      <Footer />
     </div>
+  )
+}
+
+function Footer() {
+  return (
+    <footer className="site-footer">
+      <div className="footer-content">
+        <div className="footer-brand">
+          <span className="footer-logo">StockInsight</span>
+          <p className="footer-tagline">Advanced fundamental analysis and semantic intelligence for the modern investor.</p>
+        </div>
+        <div className="footer-links">
+          <div className="footer-col">
+            <h4>Platform</h4>
+            <a href="#">Analysis</a>
+            <a href="#">Sentiment</a>
+            <a href="#">Screener</a>
+          </div>
+          <div className="footer-col">
+            <h4>Resources</h4>
+            <a href="#">Documentation</a>
+            <a href="#">Security</a>
+            <a href="#">Market News</a>
+          </div>
+          <div className="footer-col">
+            <h4>Company</h4>
+            <a href="#">About Us</a>
+            <a href="#">Contact</a>
+            <a href="#">Terms & Privacy</a>
+          </div>
+        </div>
+      </div>
+      <div className="footer-bottom">
+        <p>&copy; {new Date().getFullYear()} StockInsight. All rights reserved.</p>
+        <p className="footer-disclaimer">
+          Data provided is for informational purposes only and does not constitute financial or investment advice.
+        </p>
+      </div>
+    </footer>
   )
 }
 
@@ -447,6 +487,36 @@ function HeaderBar({
 }
 
 
+function HomePulseSparkline({ data, color }: { data: number[]; color: string }) {
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const range = max - min || 1
+  const width = 48
+  const height = 16
+  const points = data.map((d, i) => `${(i / (data.length - 1)) * width},${height - ((d - min) / range) * height}`).join(' ')
+  return (
+    <svg width={width} height={height} viewBox={`0 -2 ${width} ${height + 4}`} className="indicator-mini-sparkline" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polyline points={points} stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function HomeSnapshotTile({ ticker, name, price, change, onSelect }: { ticker: string, name: string, price: string, change: number, onSelect: (t: string) => void }) {
+  const isUp = change >= 0
+  const colorClass = isUp ? 'text-soft-mint' : 'text-soft-coral'
+  const sign = isUp ? '+' : ''
+  return (
+    <button type="button" className="hp-snapshot-tile" onClick={() => onSelect(ticker)}>
+      <div className="hp-snapshot-header">
+        <span className="hp-snapshot-ticker">{ticker}</span>
+        <span className={`hp-snapshot-change ${colorClass}`}>{sign}{change.toFixed(2)}%</span>
+      </div>
+      <p className="hp-snapshot-name">{name}</p>
+      <p className="hp-snapshot-price">{price}</p>
+    </button>
+  )
+}
+
 type HomePageProps = {
   onSearch: (ticker: string) => void
   onCompare: () => void
@@ -458,26 +528,127 @@ function HomePage({ onSearch, onCompare, user }: HomePageProps) {
     ? `Welcome back, ${user.username}. `
     : ''
 
+  const indianIndices = [
+    { name: 'Nifty 50', value: '22,453.15', change: 0.85, data: [1.0, 1.1, 1.3, 1.2, 1.4, 1.6, 1.5, 1.7, 1.9, 2.0, 1.9] },
+    { name: 'Sensex', value: '74,119.39', change: 0.72, data: [2.0, 2.1, 2.0, 2.2, 2.3, 2.2, 2.4, 2.3, 2.5, 2.6, 2.5] },
+    { name: 'Nifty Bank', value: '47,812.10', change: 1.12, data: [0.5, 0.7, 0.6, 0.9, 1.0, 1.2, 1.1, 1.3, 1.5, 1.4, 1.6] }
+  ]
+
+  const globalIndices = [
+    { name: 'S&P 500', value: '5,123.41', change: 1.25, data: [1.1, 1.2, 1.0, 1.4, 1.3, 1.6, 1.8, 1.6, 1.9, 2.1, 2.0] },
+    { name: 'Nasdaq', value: '16,211.02', change: 1.52, data: [2.1, 2.3, 2.1, 2.5, 2.4, 2.7, 2.9, 2.8, 3.1, 3.0, 3.2] },
+    { name: 'Dow', value: '38,987.32', change: -0.41, data: [5.1, 5.0, 5.2, 4.9, 4.8, 4.7, 4.9, 4.6, 4.5, 4.4, 4.3] }
+  ]
+
+  const trending = [
+    { ticker: 'NVDA', name: 'NVIDIA Corp.', price: '$850.12', change: 4.52 },
+    { ticker: 'AAPL', name: 'Apple Inc.', price: '$178.41', change: -1.21 },
+    { ticker: 'MSFT', name: 'Microsoft Corp.', price: '$420.55', change: 2.14 },
+    { ticker: 'TSLA', name: 'Tesla Inc.', price: '$172.90', change: -3.45 }
+  ]
+
   return (
-    <section className="hero">
-      <div className="hero-single">
-        <div className="hero-single-bg" aria-hidden="true" />
-        <h1>StockInsight</h1>
-        {greeting && <p>{greeting}</p>}
-        <StockSearchForm
-          className="hero-search"
-          onSearch={onSearch}
-          placeholder="e.g. AAPL, TSLA, Microsoft..."
-          ariaLabel="Search for a company or ticker"
-          buttonLabel="Analyze"
-        />
-        <div className="hero-compare-cta">
-          <button type="button" className="compare-cta-btn" onClick={onCompare}>
-            Compare Multiple Stocks →
-          </button>
+    <div className="home-container">
+      <section className="hero">
+        <div className="hero-single">
+          <div className="hero-single-bg" aria-hidden="true" />
+          <h1>StockInsight</h1>
+          {greeting && <p className="hero-greeting">{greeting}</p>}
+          <StockSearchForm
+            className="hero-search"
+            onSearch={onSearch}
+            placeholder="e.g. AAPL, TSLA, Microsoft..."
+            ariaLabel="Search for a company or ticker"
+            buttonLabel="Analyze"
+          />
+          
+          <div className="market-pulse-strip indian-market-pulse">
+            {indianIndices.map(idx => {
+              const isUp = idx.change >= 0
+              const colorVal = isUp ? 'var(--soft-mint)' : 'var(--soft-coral)'
+              const colorCls = isUp ? 'text-soft-mint' : 'text-soft-coral'
+              return (
+                <div key={idx.name} className="market-pulse-item">
+                  <span className="pulse-idx-name">{idx.name}</span>
+                  <span className="pulse-idx-val">{idx.value}</span>
+                  <span className={`pulse-idx-change ${colorCls}`}>
+                    {isUp ? '+' : ''}{idx.change}%
+                  </span>
+                  <HomePulseSparkline data={idx.data} color={colorVal} />
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="market-pulse-strip global-market-pulse">
+            {globalIndices.map(idx => {
+              const isUp = idx.change >= 0
+              const colorVal = isUp ? 'var(--soft-mint)' : 'var(--soft-coral)'
+              const colorCls = isUp ? 'text-soft-mint' : 'text-soft-coral'
+              return (
+                <div key={idx.name} className="market-pulse-item">
+                  <span className="pulse-idx-name">{idx.name}</span>
+                  <span className="pulse-idx-val">{idx.value}</span>
+                  <span className={`pulse-idx-change ${colorCls}`}>
+                    {isUp ? '+' : ''}{idx.change}%
+                  </span>
+                  <HomePulseSparkline data={idx.data} color={colorVal} />
+                </div>
+              )
+            })}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section className="hp-quick-entry-section">
+        <div className="hp-quick-entry-grid">
+          <div className="hp-trending-block">
+            <h3 className="hp-block-title">Trending Tickers</h3>
+            <div className="hp-trending-tiles">
+              {trending.map(t => (
+                <HomeSnapshotTile key={t.ticker} {...t} onSelect={onSearch} />
+              ))}
+            </div>
+          </div>
+          <div className="hp-compare-cta-block">
+            <h3 className="hp-block-title">Deep Comparison</h3>
+            <div className="hp-compare-card">
+              <div className="hp-compare-visual">
+                <div className="hp-vs-ticker hp-vs-blue">AMD</div>
+                <div className="hp-vs-badge">VS</div>
+                <div className="hp-vs-ticker hp-vs-green">NVDA</div>
+              </div>
+              <h4>Compare Multiple Stocks</h4>
+              <p>Place companies side-by-side to immediately contrast fundamental rigor, real-time sentiment, and technical momentum.</p>
+              <button type="button" className="compare-cta-btn" onClick={onCompare}>
+                Start a Comparison →
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="hp-pillars-section">
+        <h2 className="hp-section-title">Why StockInsight?</h2>
+        <div className="hp-pillars-grid">
+          <div className="hp-pillar-card">
+            <div className="hp-pillar-icon">📊</div>
+            <h3>Fundamental Rigor</h3>
+            <p>Deep-dive enterprise valuation metrics. Uncover underlying financial strength with sector-normalized ratios and growth history.</p>
+          </div>
+          <div className="hp-pillar-card">
+            <div className="hp-pillar-icon">📈</div>
+            <h3>Technical Precision</h3>
+            <p>Advanced charting with moving averages, momentum indicators, and sophisticated candlestick pattern analysis to time your entry.</p>
+          </div>
+          <div className="hp-pillar-card">
+            <div className="hp-pillar-icon">🧠</div>
+            <h3>Sentiment Intelligence</h3>
+            <p>Our NLP engine aggregates live news and scores semantic polarity. Gain a critical edge by understanding behavioral market buzz.</p>
+          </div>
+        </div>
+      </section>
+    </div>
   )
 }
 
