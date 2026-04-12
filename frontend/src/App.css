@@ -487,6 +487,32 @@ html.dark .top-dropdown-menu {
   gap: 1rem;
 }
 
+.profile-card {
+  gap: 1.1rem;
+}
+
+.profile-summary {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.profile-static-field input {
+  background: color-mix(in srgb, var(--bg) 74%, var(--card) 26%);
+  color: var(--ink);
+  cursor: default;
+}
+
+.profile-password-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.profile-auth-actions {
+  margin-top: 0.2rem;
+}
+
 .auth-card-header {
   display: grid;
   gap: 0.45rem;

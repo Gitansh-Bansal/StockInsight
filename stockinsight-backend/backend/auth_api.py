@@ -4,7 +4,13 @@ import time
 from typing import Any
 
 import requests
-from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth import (
+    authenticate,
+    get_user_model,
+    login,
+    logout,
+    update_session_auth_hash,
+)
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
@@ -36,6 +42,12 @@ class GoogleAuthPayload(Schema):
 class CompleteGoogleSignupPayload(Schema):
     username: str
     password: str
+    confirmPassword: str
+
+
+class ChangePasswordPayload(Schema):
+    currentPassword: str = ""
+    newPassword: str
     confirmPassword: str
 
 
@@ -399,5 +411,40 @@ def auth_google_complete(request, payload: CompleteGoogleSignupPayload):
 def auth_logout(request):
     if request.user.is_authenticated:
         logout(request)
+    get_token(request)
+    return JsonResponse({"success": True})
+
+
+@router.post("/change-password")
+def auth_change_password(request, payload: ChangePasswordPayload):
+    user = request.user
+    if not user.is_authenticated:
+        return _error("You must be logged in to change password.", status=401)
+
+    current_password = payload.currentPassword
+    new_password = payload.newPassword
+    confirm_password = payload.confirmPassword
+
+    if not new_password:
+        return _error("New password is required.")
+    if new_password != confirm_password:
+        return _error("Password confirmation does not match.")
+
+    if user.has_usable_password():
+        if not current_password:
+            return _error("Current password is required.")
+        if not user.check_password(current_password):
+            return _error("Current password is incorrect.", status=401)
+        if current_password == new_password:
+            return _error("New password must be different from current password.")
+
+    try:
+        validate_password(new_password, user=user)
+    except ValidationError as exc:
+        return _error(" ".join(exc.messages))
+
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+    update_session_auth_hash(request, user)
     get_token(request)
     return JsonResponse({"success": True})

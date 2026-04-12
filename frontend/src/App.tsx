@@ -8,7 +8,7 @@ import {
 import './App.css'
 import { AuthPanel } from './components/AuthPanel'
 import { StockSearchForm } from './components/StockSearchForm'
-import { completeGoogleSignup, fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, loginWithGoogle, logoutUser, registerUser } from './api'
+import { changeUserPassword, completeGoogleSignup, fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, loginWithGoogle, logoutUser, registerUser } from './api'
 import type { GoogleAuthResult } from './api'
 import { DiscussionSection } from './components/DiscussionSection'
 import { PdfReportTemplate } from './components/PdfReportTemplate'
@@ -48,6 +48,7 @@ type AppRoute =
   | { type: 'auth'; mode: AuthMode }
   | { type: 'stock'; ticker: string; tab: AnalysisTab }
   | { type: 'compare' }
+  | { type: 'profile' }
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous'
 
@@ -140,6 +141,10 @@ function App() {
     navigate('/compare')
   }, [navigate])
 
+  const goProfile = useCallback(() => {
+    navigate('/profile')
+  }, [navigate])
+
   const openAuthPage = useCallback(
     (mode: AuthMode) => {
       navigate(mode === 'signup' ? '/signup' : '/login')
@@ -209,6 +214,17 @@ function App() {
     }
   }, [navigate])
 
+  const handleChangePassword = useCallback(
+    async (values: {
+      currentPassword: string
+      newPassword: string
+      confirmPassword: string
+    }) => {
+      await changeUserPassword(values)
+    },
+    [],
+  )
+
   return (
     <div className="app-shell">
       <HeaderBar
@@ -226,6 +242,7 @@ function App() {
         onSearch={handleSearch}
         onHome={goHome}
         onCompare={goCompare}
+        onProfile={goProfile}
       />
 
       <main className="content">
@@ -252,6 +269,13 @@ function App() {
             onSignup={handleSignup}
             onGoogleAuth={handleGoogleLogin}
             onCompleteGoogleSignup={handleGoogleSignupCompletion}
+          />
+        ) : route.type === 'profile' ? (
+          <ProfilePage
+            authStatus={authStatus}
+            user={authUser}
+            onAuthModeChange={openAuthPage}
+            onChangePassword={handleChangePassword}
           />
         ) : (
           <HomePage onSearch={handleSearch} onCompare={goCompare} user={authUser} />
@@ -308,6 +332,7 @@ type HeaderBarProps = {
   isCompareRoute: boolean
   onAuthModeChange: (mode: AuthMode) => void
   onLogout: () => void
+  onProfile: () => void
   onSearch: (ticker: string) => void
   onHome: () => void
   onCompare: () => void
@@ -324,6 +349,7 @@ function HeaderBar({
   isCompareRoute,
   onAuthModeChange,
   onLogout,
+  onProfile,
   onSearch,
   onHome,
   onCompare,
@@ -444,16 +470,28 @@ function HeaderBar({
               {authStatus === 'loading' ? (
                 <div className="dropdown-status">Restoring session...</div>
               ) : isAuthenticated ? (
-                <button
-                  type="button"
-                  className="dropdown-item logout-item"
-                  onClick={() => {
-                    onLogout()
-                    setIsMenuOpen(false)
-                  }}
-                >
-                  Log Out
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    onClick={() => {
+                      onProfile()
+                      setIsMenuOpen(false)
+                    }}
+                  >
+                    Profile
+                  </button>
+                  <button
+                    type="button"
+                    className="dropdown-item logout-item"
+                    onClick={() => {
+                      onLogout()
+                      setIsMenuOpen(false)
+                    }}
+                  >
+                    Log Out
+                  </button>
+                </>
               ) : (
                 <>
                   <button
@@ -1042,6 +1080,165 @@ function AuthPage({
         onGoogleAuth={onGoogleAuth}
         onCompleteGoogleSignup={onCompleteGoogleSignup}
       />
+    </section>
+  )
+}
+
+type ProfilePageProps = {
+  authStatus: AuthStatus
+  user: AuthUser | null
+  onAuthModeChange: (mode: AuthMode) => void
+  onChangePassword: (values: {
+    currentPassword: string
+    newPassword: string
+    confirmPassword: string
+  }) => Promise<void>
+}
+
+function ProfilePage({
+  authStatus,
+  user,
+  onAuthModeChange,
+  onChangePassword,
+}: ProfilePageProps) {
+  const [formValues, setFormValues] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!user) {
+      setError('Please log in to manage your profile settings.')
+      return
+    }
+
+    setError('')
+    setNotice('')
+    setIsSubmitting(true)
+    try {
+      await onChangePassword(formValues)
+      setNotice('Password updated successfully.')
+      setFormValues({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      })
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to update password right now.'
+      setError(message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <section className="hero hero-grid profile-page">
+      <div className="hero-single">
+        <p className="kicker">Account</p>
+        <h1>Your Profile</h1>
+        <p>Review your account details and keep your password secure.</p>
+      </div>
+
+      <div className="auth-card profile-card">
+        {authStatus === 'loading' ? (
+          <p className="auth-copy">Restoring session...</p>
+        ) : !user ? (
+          <>
+            <p className="auth-error">You need to log in to access your profile.</p>
+            <div className="cta-row profile-auth-actions">
+              <button type="button" onClick={() => onAuthModeChange('login')}>
+                Log In
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => onAuthModeChange('signup')}
+              >
+                Create Account
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="profile-summary">
+              <div className="auth-field profile-static-field">
+                <span>Username</span>
+                <input value={user.username} readOnly />
+              </div>
+              <div className="auth-field profile-static-field">
+                <span>Email</span>
+                <input value={user.email || 'No email set'} readOnly />
+              </div>
+            </div>
+
+            <div className="auth-divider">
+              <span>Password</span>
+            </div>
+
+            <form className="auth-form" onSubmit={handleSubmit}>
+              <p className="profile-password-note">
+                If you signed up with Google and never set a password, leave current
+                password blank.
+              </p>
+              <label className="auth-field">
+                <span>Current Password</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={formValues.currentPassword}
+                  onChange={(event) =>
+                    setFormValues((current) => ({
+                      ...current,
+                      currentPassword: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="auth-field">
+                <span>New Password</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={formValues.newPassword}
+                  onChange={(event) =>
+                    setFormValues((current) => ({
+                      ...current,
+                      newPassword: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="auth-field">
+                <span>Confirm New Password</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={formValues.confirmPassword}
+                  onChange={(event) =>
+                    setFormValues((current) => ({
+                      ...current,
+                      confirmPassword: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              {error && <p className="auth-error">{error}</p>}
+              {notice && <p className="auth-notice">{notice}</p>}
+              <button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Updating Password...' : 'Change Password'}
+              </button>
+            </form>
+          </>
+        )}
+      </div>
     </section>
   )
 }
@@ -4578,6 +4775,10 @@ function parseRoute(pathname: string): AppRoute {
 
   if (/^\/compare\/?$/i.test(pathname)) {
     return { type: 'compare' }
+  }
+
+  if (/^\/profile\/?$/i.test(pathname)) {
+    return { type: 'profile' }
   }
 
   const match = pathname.match(/^\/stock\/([^/]+)(?:\/([^/]+))?\/?$/i)

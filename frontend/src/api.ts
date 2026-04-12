@@ -209,6 +209,17 @@ export async function logoutUser(): Promise<void> {
   csrfTokenCache = ''
 }
 
+export async function changeUserPassword(input: {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}): Promise<void> {
+  await apiRequest('/api/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
 export async function fetchAnalysis(
   ticker: string,
 ): Promise<AnalysisResponse> {
