@@ -387,13 +387,15 @@ def score_engine(
     #    compounded every component's error; now it's
     #    just a small flat nudge based on ADX.
     # ─────────────────────────────────────────────
+    # Use continuous scaling for trend bonus
+    regime_bonus = 1.5 * (1 + smooth_centered(adx, 37.5, 12.5))
     if adx > 25:
-        regime_bonus = min((adx - 25) / 25, 1.0) * 3.0   # 0–3 pts
         score += regime_bonus if score >= 0 else -regime_bonus
         reasons.append("Strong trend")
-    elif adx < 15:
-        # Weak trend: slightly dampen the signal
-        score *= 0.9
+    
+    # Smooth dampening for weak trend
+    dampen_factor = 1.0 - 0.1 * (1 - smooth_centered(adx, 15.0, 5.0)) / 2
+    score *= dampen_factor
 
     # ─────────────────────────────────────────────
     # 6. Breakout Signal
@@ -403,14 +405,20 @@ def score_engine(
     # ─────────────────────────────────────────────
     BREAKOUT_MARGIN = close * 0.005   # 0.5% confirmation buffer
 
-    if breakout_signal and adx > 20:   # only act when there's some trend
-        bo_weight = 8 if regime == "Trending" else 4   # was always 8
-        if breakout_signal == "Bullish Breakout":
-            score += bo_weight
-            reasons.append("Bullish breakout")
-        elif breakout_signal == "Bearish Breakdown":
-            score -= bo_weight
-            reasons.append("Bearish breakdown")
+    if breakout_signal:   # act smoothly when there's some trend
+        # Smooth weight based on ADX (stronger trend -> higher weight, from ~4 to ~8)
+        bo_weight = 4 + 4 * (1 + smooth_centered(adx, 25.0, 10.0)) / 2
+        # Only apply full breakout if trend has some strength (adx > 15-20 smoothly)
+        bo_confidence = (1 + smooth_centered(adx, 20.0, 5.0)) / 2
+        bo_effective_weight = bo_weight * bo_confidence
+        
+        if bo_effective_weight > 2:
+            if breakout_signal == "Bullish Breakout":
+                score += bo_effective_weight
+                reasons.append("Bullish breakout")
+            elif breakout_signal == "Bearish Breakdown":
+                score -= bo_effective_weight
+                reasons.append("Bearish breakdown")
 
     # ─────────────────────────────────────────────
     # 7. Volume

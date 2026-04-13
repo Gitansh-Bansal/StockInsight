@@ -179,112 +179,95 @@ def _compute_fundamental_score(info: dict, sector_pe_data: dict | None = None) -
     
     # --- Pillar 1: Valuation (Max 30) ---
     if peg is not None and peg > 0:
-        if peg < 1.0: score += 10
-        elif peg <= 1.5: score += 5
+        score += 5 * (1 - math.tanh((peg - 1.25) / 0.25))
     
     # P/E scoring: prefer sector-normalised relative standing over raw thresholds
     if sector_pe_data is not None:
         trailing_standing_score = sector_pe_data.get("trailing", {}).get("relativeStandingScore")
         forward_standing_score = sector_pe_data.get("forward", {}).get("relativeStandingScore")
         # Use trailing if available, else forward. Score is tanh in [-1, 1]:
-        #   <= -0.2 → Undervalued → +10, in (-0.2, 0.2) → Fairly Valued → +5, > 0.2 → Overvalued → +0
         norm_score = trailing_standing_score if trailing_standing_score is not None else forward_standing_score
         if norm_score is not None:
-            if norm_score <= -0.2:
-                score += 10
-            elif norm_score <= 0.2:
-                score += 5
-            # else: overvalued → no points
+            score += 5 * (1 - math.tanh(norm_score * 2.5))
     elif pe is not None and pe > 0:
         # Fallback: raw thresholds when no sector data
-        if pe < 15: score += 10
-        elif pe <= 25: score += 5
+        score += 5 * (1 - math.tanh((pe - 20) / 5))
 
     if pb_ratio is not None and pb_ratio > 0:
-        if pb_ratio < 1.5: score += 10
-        elif pb_ratio <= 3.0: score += 5
+        score += 5 * (1 - math.tanh((pb_ratio - 2.25) / 0.75))
 
     # --- Pillar 2: Profitability & Efficiency (Max 30) ---
     if roe is not None:
-        if roe > 0.15: score += 10
-        elif roe >= 0.08: score += 5
+        score += 5 * (1 + math.tanh((roe - 0.115) / 0.035))
 
     if op_margin is not None:
-        if op_margin > 0.15: score += 10
-        elif op_margin >= 0.05: score += 5
+        score += 5 * (1 + math.tanh((op_margin - 0.10) / 0.05))
 
     if net_margin is not None:
-        if net_margin > 0.10: score += 10
-        elif net_margin >= 0.05: score += 5
+        score += 5 * (1 + math.tanh((net_margin - 0.075) / 0.025))
 
     # --- Pillar 3: Financial Health & Liquidity (Max 25) ---
     if is_financial:
         roa = _safe_get(info, "returnOnAssets")
         if roa is not None:
-            if roa > 0.015: score += 15
-            elif roa >= 0.010: score += 10
+            score += 7.5 * (1 + math.tanh((roa - 0.0125) / 0.0025))
 
         if net_margin is not None:
-            if net_margin > 0.20: score += 10
-            elif net_margin > 0.10: score += 5
+            score += 5 * (1 + math.tanh((net_margin - 0.15) / 0.05))
     else:
         if de is not None:
-            if de < 50: score += 10
-            elif de <= 150: score += 5
+            score += 5 * (1 - math.tanh((de - 100) / 50))
         elif total_debt == 0:
             score += 10
 
         if cr is not None and cr > 0:
-            if cr > 1.5: score += 10
-            elif cr >= 1.0: score += 5
+            score += 5 * (1 + math.tanh((cr - 1.25) / 0.25))
 
         if fcf is not None and fcf > 0:
             score += 5
 
     # --- Pillar 4: Growth & Dividends (Max 15) ---
     if rev_growth is not None:
-        if rev_growth > 0.10: score += 5
-        elif rev_growth >= 0.0: score += 3
+        score += 2.5 * (1 + math.tanh((rev_growth - 0.05) / 0.05))
 
     if eps_growth is not None:
-        if eps_growth > 0.10: score += 5
-        elif eps_growth >= 0.0: score += 3
+        score += 2.5 * (1 + math.tanh((eps_growth - 0.05) / 0.05))
     
     if div_yield is not None:
-        if div_yield > 0.02 and (payout is None or payout < 0.70):
-             score += 5
-        elif payout is not None and payout > 0.85:
-             score -= 5
+        div_score = 5 * math.tanh((div_yield - 0.015) / 0.01)
+        if payout is not None:
+            div_score -= 5 * (1 + math.tanh((payout - 0.75) / 0.1)) / 2
+        score += max(-5.0, min(5.0, div_score))
 
     # ==========================================
     # 3. APPLY PENALTIES
     # ==========================================
     if de is not None and cr is not None:
-        if de > 300 and cr < 0.8:
-            score -= 20
+        penalty = 10 * (1 + math.tanh((de - 300) / 50)) * (1 - math.tanh((cr - 0.8) / 0.2)) / 2
+        score -= penalty
     
-    if net_margin is not None and net_margin < -0.10:
-        score -= 15
+    if net_margin is not None:
+        score -= 7.5 * (1 - math.tanh((net_margin + 0.10) / 0.05))
 
     valuation_score = 0
-    if peg is not None and peg < 1.0: valuation_score += 10
-    elif peg is not None and peg <= 1.5: valuation_score += 5
+    if peg is not None and peg > 0: 
+        valuation_score += 5 * (1 - math.tanh((peg - 1.25) / 0.25))
+    
     # Mirror the sector-normalised P/E logic used in scoring above
     if sector_pe_data is not None:
         trailing_standing_score = sector_pe_data.get("trailing", {}).get("relativeStandingScore")
         forward_standing_score = sector_pe_data.get("forward", {}).get("relativeStandingScore")
         norm_score = trailing_standing_score if trailing_standing_score is not None else forward_standing_score
         if norm_score is not None:
-            if norm_score <= -0.2: valuation_score += 10
-            elif norm_score <= 0.2: valuation_score += 5
-    elif pe is not None:
-        if pe < 15: valuation_score += 10
-        elif pe <= 25: valuation_score += 5
-    if pb_ratio is not None and pb_ratio < 1.5: valuation_score += 10 
-    elif pb_ratio is not None and pb_ratio <= 3.0: valuation_score += 5
+            valuation_score += 5 * (1 - math.tanh(norm_score * 2.5))
+    elif pe is not None and pe > 0:
+        valuation_score += 5 * (1 - math.tanh((pe - 20) / 5))
+        
+    if pb_ratio is not None and pb_ratio > 0: 
+        valuation_score += 5 * (1 - math.tanh((pb_ratio - 2.25) / 0.75))
 
-    if valuation_score >= 20 and rev_growth is not None and rev_growth < 0:
-        score -= 10
+    if valuation_score >= 15 and rev_growth is not None and rev_growth < 0:
+        score -= 5 * (1 - math.tanh(rev_growth / 0.05))
 
     return max(0.0, min(100.0, round(score, 1)))
 
