@@ -1,6 +1,6 @@
 """
-LLM report generation: produce sectioned summaries using Gemini with a
-deterministic fallback.
+LLM report generation: produce sectioned summaries using Gemini with
+Groq/OpenAI-compatible and deterministic fallbacks.
 """
 import json
 import logging
@@ -17,6 +17,25 @@ logger = logging.getLogger(__name__)
 
 ReportSections = dict[str, str]
 ReportBundle = dict[str, Any]
+_DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
+_MAX_PROMPT_HEADLINES = 12
+_MAX_PROMPT_HEADLINE_CHARS = 140
+_DEFAULT_GROQ_MAX_COMPLETION_TOKENS = 1800
+_MAX_GROQ_RETRY_COMPLETION_TOKENS = 2600
+
+
+def _resolve_report_llm_provider() -> str:
+    """
+    Supported values:
+    - auto (default): Gemini first, then Groq fallback
+    - gemini: Gemini only
+    - groq: Groq only (skip Gemini entirely)
+    """
+    raw = (os.getenv("REPORT_LLM_PROVIDER") or "auto").strip().lower()
+    if raw in {"auto", "gemini", "groq"}:
+        return raw
+    logger.warning("Invalid REPORT_LLM_PROVIDER=%r; defaulting to 'auto'.", raw)
+    return "auto"
 
 
 def _get_gemini_client() -> genai.Client | None:
@@ -33,6 +52,121 @@ def _get_gemini_client() -> genai.Client | None:
         return None
 
 
+def _generate_report_bundle_with_groq(prompt: str, ticker: str) -> ReportBundle | None:
+    """Attempt Groq generation through OpenAI-compatible client."""
+    load_dotenv()
+    api_key = (os.getenv("GROQ_API_KEY") or "").strip()
+    if not api_key:
+        logger.warning("GROQ_API_KEY not set; skipping Groq fallback.")
+        return None
+
+    model = (os.getenv("GROQ_MODEL") or _DEFAULT_GROQ_MODEL).strip() or _DEFAULT_GROQ_MODEL
+    max_completion_tokens = _DEFAULT_GROQ_MAX_COMPLETION_TOKENS
+    raw_max_completion_tokens = (os.getenv("GROQ_MAX_COMPLETION_TOKENS") or "").strip()
+    if raw_max_completion_tokens:
+        try:
+            parsed_tokens = int(raw_max_completion_tokens)
+            if parsed_tokens > 0:
+                max_completion_tokens = parsed_tokens
+        except ValueError:
+            logger.warning(
+                "Invalid GROQ_MAX_COMPLETION_TOKENS=%r; using default %d.",
+                raw_max_completion_tokens,
+                _DEFAULT_GROQ_MAX_COMPLETION_TOKENS,
+            )
+
+    try:
+        from openai import OpenAI
+    except Exception as exc:
+        logger.warning("OpenAI client import failed; skipping Groq fallback: %s", exc)
+        return None
+
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        parsed: dict[str, Any] | None = None
+        last_raw_text = ""
+        for attempt in range(1, 3):
+            attempt_max_completion_tokens = (
+                max_completion_tokens
+                if attempt == 1
+                else min(
+                    int(max_completion_tokens * 1.5),
+                    _MAX_GROQ_RETRY_COMPLETION_TOKENS,
+                )
+            )
+            try:
+                completion = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a senior financial analyst. "
+                                "Return only one valid JSON object."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt if attempt == 1 else _build_json_retry_prompt(prompt),
+                        },
+                    ],
+                    response_format={"type": "json_object"},
+                    max_completion_tokens=attempt_max_completion_tokens,
+                    temperature=0.2,
+                )
+            except Exception as exc:
+                if _is_groq_json_length_error(exc):
+                    logger.warning(
+                        (
+                            "Groq JSON generation hit token limit on attempt %d/2 "
+                            "(max_completion_tokens=%d); retrying."
+                        ),
+                        attempt,
+                        attempt_max_completion_tokens,
+                    )
+                    continue
+                raise
+            raw_text = (
+                str(
+                    (completion.choices[0].message.content if completion.choices else "")
+                    or ""
+                ).strip()
+            )
+            last_raw_text = raw_text
+            parsed = _parse_json_object(raw_text)
+            if parsed is not None:
+                break
+            logger.warning(
+                "Groq response was not valid JSON on attempt %d/2.",
+                attempt,
+            )
+
+        if parsed is None:
+            if last_raw_text:
+                logger.warning(
+                    "Groq response parse failed after retry. Preview: %s",
+                    last_raw_text[:400].replace("\n", "\\n"),
+                )
+            return None
+
+        sections = _normalise_sections(parsed)
+        full_report = str(parsed.get("fullReportMarkdown") or "").strip()
+        if not full_report:
+            full_report = _build_markdown_from_sections(ticker, sections)
+
+        return {
+            "source": "groq",
+            "fullReport": full_report,
+            "sections": sections,
+        }
+    except Exception as exc:
+        logger.exception("Groq fallback generation failed: %s", exc)
+        return None
+
+
 def generate_report_bundle(
     ticker: str,
     fundamental_result: dict[str, Any] | None,
@@ -44,7 +178,7 @@ def generate_report_bundle(
     """
     Generate sectioned LLM report. Returns:
     {
-      "source": "gemini" | "fallback",
+      "source": "gemini" | "groq" | "fallback",
       "fullReport": str,
       "sections": {
         "overall": str,
@@ -57,14 +191,7 @@ def generate_report_bundle(
       }
     }
     """
-    client = _get_gemini_client()
-    if client is None:
-        return _placeholder_report_bundle(
-            ticker=ticker,
-            overall_score=overall_score,
-            verdict=verdict,
-        )
-
+    provider = _resolve_report_llm_provider()
     prompt = _build_structured_prompt(
         ticker=ticker,
         fundamental_result=fundamental_result,
@@ -73,6 +200,42 @@ def generate_report_bundle(
         overall_score=overall_score,
         verdict=verdict,
     )
+    groq_prompt = _build_structured_prompt(
+        ticker=ticker,
+        fundamental_result=fundamental_result,
+        technical_result=technical_result,
+        sentiment_result=sentiment_result,
+        overall_score=overall_score,
+        verdict=verdict,
+        include_full_report_markdown=False,
+    )
+
+    if provider == "groq":
+        groq_bundle = _generate_report_bundle_with_groq(prompt=groq_prompt, ticker=ticker)
+        if groq_bundle is not None:
+            return groq_bundle
+        return _placeholder_report_bundle(
+            ticker=ticker,
+            overall_score=overall_score,
+            verdict=verdict,
+        )
+
+    client = _get_gemini_client()
+    if client is None:
+        if provider == "gemini":
+            return _placeholder_report_bundle(
+                ticker=ticker,
+                overall_score=overall_score,
+                verdict=verdict,
+            )
+        groq_bundle = _generate_report_bundle_with_groq(prompt=groq_prompt, ticker=ticker)
+        if groq_bundle is not None:
+            return groq_bundle
+        return _placeholder_report_bundle(
+            ticker=ticker,
+            overall_score=overall_score,
+            verdict=verdict,
+        )
 
     try:
         parsed: dict[str, Any] | None = None
@@ -124,7 +287,16 @@ def generate_report_bundle(
             "sections": sections,
         }
     except Exception as exc:
-        logger.exception("Gemini generation failed: %s", exc)
+        logger.warning("Gemini generation failed; using Groq fallback. Error: %s", exc)
+        if provider == "gemini":
+            return _placeholder_report_bundle(
+                ticker=ticker,
+                overall_score=overall_score,
+                verdict=verdict,
+            )
+        groq_bundle = _generate_report_bundle_with_groq(prompt=groq_prompt, ticker=ticker)
+        if groq_bundle is not None:
+            return groq_bundle
         return _placeholder_report_bundle(
             ticker=ticker,
             overall_score=overall_score,
@@ -202,13 +374,14 @@ def _build_structured_prompt(
     sentiment_result: dict[str, Any] | None,
     overall_score: float,
     verdict: str,
+    include_full_report_markdown: bool = True,
 ) -> str:
     fundamental_data = (fundamental_result or {}).get("data") or {}
     technical_data = _extract_technical_prompt_data(technical_result)
     sentiment_data = (sentiment_result or {}).get("data") or {}
     headlines = _compact_sentiment_headlines((sentiment_result or {}).get("headlines"))
 
-    payload = {
+    payload = _compact_prompt_payload({
         "ticker": ticker.upper(),
         "overallScore": overall_score,
         "verdict": verdict,
@@ -284,36 +457,35 @@ def _build_structured_prompt(
             "headlineCount": sentiment_data.get("count"),
             "headlines": headlines,
         },
-    }
+    })
+
+    required_keys = (
+        "overall, fundamental, technical, sentiment, riskFactors, conclusion, disclaimer, fullReportMarkdown"
+        if include_full_report_markdown
+        else "overall, fundamental, technical, sentiment, riskFactors, conclusion, disclaimer"
+    )
+    full_report_rule = (
+        '- fullReportMarkdown: full markdown report with matching sections.\n'
+        if include_full_report_markdown
+        else ""
+    )
 
     return (
         "Role: Senior Financial Analyst\n"
-        "Task: Create an equity research report in the given output format based on the analysis results given in JSON input.\n"
-
-        "The output should be produced in this output JSON format:\n"
-        "JSON schema:\n"
-        "{\n"
-        '  "overall": "5-7 sentences: include component scores, and explain the result using the fundamental, technical and news sentiment metrics' \
-        '",\n'
-        '  "fundamental": "4-6 bullet points (use `- `). Make each bullet unique and specific. Mention the score and explain using the fundamental metrics. Include one bullet point comparing the company\'s valuation (trailing and forward P/E) to its sector peers based on the sectorPeersAnalysis data.",\n'
-        '  "technical": "4-6 bullet points (use `- `). Make each bullet unique and specific: include technical score + bias in one bullet, trend context (price vs SMA20/SMA50/SMA200) in one bullet, momentum context (RSI/MACD/ADX) in one bullet, and key levels/structure (support, resistance, breakout, volume spike, fibonacci) plus one risk/watchout. Skip missing metrics instead of repeating available ones",\n'
-        '  "sentiment": "Start with 3-5 bullet points (use `- `) highlighting the main insights from the news headlines, then add a `Summary:` paragraph of 4-6 sentences that mentions the score and explains the overall sentiment signal",\n'
-        '  "riskFactors": "2-4 sentences",\n'
-        '  "conclusion": "2-4 sentences: mention the final verdict and conclusion",\n'
-        '  "disclaimer": "1 sentence",\n'
-        '  "fullReportMarkdown": "full markdown report with matching sections"\n'
-        "}\n\n"
-
-        "Note:\n"
-        "- Keep the tone professional.\n"
-        "- Be concise and neutral.\n"
-        "- Return strict JSON only (no markdown code fences).\n"
-        "- For `technical`, keep the bullet points in a single string value.\n"
-        "- For `technical`, avoid redundancy: do not repeat the same metric across bullets.\n"
-        "- For `sentiment`, keep the bullets and summary in a single string value.\n"
-
-
-        f"Input JSON:\n{json.dumps(payload, ensure_ascii=True)}"
+        "Task: Create an equity research report from the input JSON.\n"
+        "Return one strict JSON object only (no markdown/code fences) with keys:\n"
+        f"{required_keys}.\n"
+        "Requirements:\n"
+        "- overall: 5-7 sentences; mention fundamental, technical, sentiment scores.\n"
+        "- fundamental: 4-6 unique `- ` bullets; include score, key metrics, and one valuation vs sectorPeersAnalysis point.\n"
+        "- technical: 4-6 unique `- ` bullets in one string; include score+bias, trend (SMA), momentum (RSI/MACD/ADX), structure (support/resistance/breakout/volume/fibonacci), and one watchout. Skip missing metrics.\n"
+        "- sentiment: one string with 3-5 `- ` bullets from headlines, then `Summary:` with 4-6 sentences mentioning score.\n"
+        "- riskFactors: 2-4 sentences.\n"
+        "- conclusion: 2-4 sentences including verdict.\n"
+        "- disclaimer: 1 sentence.\n"
+        f"{full_report_rule}"
+        "- Keep tone professional, concise, and neutral.\n\n"
+        f"Input JSON:\n{json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}"
     )
 
 
@@ -336,11 +508,18 @@ def _compact_sentiment_headlines(raw_headlines: Any) -> list[dict[str, Any]]:
 
     compact: list[dict[str, Any]] = []
     for headline in raw_headlines:
+        if len(compact) >= _MAX_PROMPT_HEADLINES:
+            break
         if not isinstance(headline, dict):
             continue
+        title = str(headline.get("title") or "").strip()
+        if not title:
+            continue
+        if len(title) > _MAX_PROMPT_HEADLINE_CHARS:
+            title = f"{title[:_MAX_PROMPT_HEADLINE_CHARS - 1].rstrip()}..."
         compact.append(
             {
-                "title": headline.get("title"),
+                "title": title,
                 "source": headline.get("source"),
                 "publishedAt": headline.get("publishedAt"),
                 "sentiment": headline.get("sentiment"),
@@ -348,6 +527,49 @@ def _compact_sentiment_headlines(raw_headlines: Any) -> list[dict[str, Any]]:
             }
         )
     return compact
+
+
+def _compact_prompt_payload(value: Any) -> Any:
+    """
+    Remove empty/null branches before serialization to keep prompt tokens bounded
+    without changing the report schema requested from the model.
+    """
+    if isinstance(value, dict):
+        compact_dict: dict[str, Any] = {}
+        for key, item in value.items():
+            compact_item = _compact_prompt_payload(item)
+            if compact_item is None:
+                continue
+            if isinstance(compact_item, str) and not compact_item.strip():
+                continue
+            if isinstance(compact_item, (list, dict)) and not compact_item:
+                continue
+            compact_dict[key] = compact_item
+        return compact_dict
+
+    if isinstance(value, list):
+        compact_list: list[Any] = []
+        for item in value:
+            compact_item = _compact_prompt_payload(item)
+            if compact_item is None:
+                continue
+            if isinstance(compact_item, str) and not compact_item.strip():
+                continue
+            if isinstance(compact_item, (list, dict)) and not compact_item:
+                continue
+            compact_list.append(compact_item)
+        return compact_list
+
+    return value
+
+
+def _is_groq_json_length_error(exc: Exception) -> bool:
+    raw = str(exc).lower()
+    return (
+        "json_validate_failed" in raw
+        or "max completion tokens reached" in raw
+        or "failed to generate json" in raw
+    )
 
 
 def _parse_json_object(raw_text: str) -> dict[str, Any] | None:
