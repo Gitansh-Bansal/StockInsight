@@ -1347,11 +1347,17 @@ function AnalysisPage({ ticker, tab, user, theme, onTabChange }: AnalysisPagePro
     return { currentPrice, change, changePercent, currency }
   }, [analysis])
 
+  const exchangeName = useMemo(() => {
+    const data = analysis?.fundamental?.data
+    if (!data) return 'Ticker Detail'
+    return data.fullExchangeName ?? data.exchange ?? 'Ticker Detail'
+  }, [analysis])
+
   return (
     <section className="analysis-layout">
       <div className="analysis-header reveal">
         <div>
-          <p className="kicker">Ticker Detail</p>
+          <p className="kicker">{exchangeName}</p>
           <h1>{companyName ? `${companyName} (${ticker})` : ticker}</h1>
         </div>
         {priceInfo && (
