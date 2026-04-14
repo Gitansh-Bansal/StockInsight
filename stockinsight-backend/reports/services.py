@@ -4,6 +4,7 @@ Groq/OpenAI-compatible and deterministic fallbacks.
 """
 import json
 import logging
+import math
 import os
 import re
 from typing import Any
@@ -472,6 +473,7 @@ def _build_structured_prompt(
 
     return (
         "Role: Senior Financial Analyst\n"
+<<<<<<< Updated upstream
         "Task: Create an equity research report in the given output format based on the analysis results given in JSON input.\n"
 
         "The output should be produced in this output JSON format:\n"
@@ -496,6 +498,22 @@ def _build_structured_prompt(
         "- For `technical`, avoid redundancy: do not repeat the same metric across bullets.\n"
         "- For `sentiment`, keep the bullets and summary in a single string value.\n"
         f"Input JSON:\n{json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}"
+=======
+        "Task: Create an equity research report from the input JSON.\n"
+        "Return one strict JSON object only (no markdown/code fences) with keys:\n"
+        f"{required_keys}.\n"
+        "Requirements:\n"
+        "- overall: 5-7 sentences; mention fundamental, technical, sentiment scores.\n"
+        "- fundamental: 4-6 unique `- ` bullets; include score, key metrics, and one valuation vs sectorPeersAnalysis point.\n"
+        "- technical: 4-6 unique `- ` bullets in one string; include score+bias, trend (SMA), momentum (RSI/MACD/ADX), structure (support/resistance/breakout/volume/fibonacci), and one watchout. Skip missing metrics.\n"
+        "- sentiment: one string with 3-5 `- ` bullets from headlines, then `Summary:` with 4-6 sentences mentioning score.\n"
+        "- riskFactors: 2-4 sentences.\n"
+        "- conclusion: 2-4 sentences including verdict.\n"
+        "- disclaimer: 1 sentence.\n"
+        f"{full_report_rule}"
+        "- Keep tone professional, concise, and neutral.\n\n"
+        f"Input JSON:\n{json.dumps(_truncate_floats(payload, 4), ensure_ascii=True, separators=(',', ':'))}"
+>>>>>>> Stashed changes
     )
 
 
@@ -639,6 +657,18 @@ def _compact_prompt_payload(value: Any) -> Any:
         return compact_list
 
     return value
+
+
+def _truncate_floats(obj: Any, decimals: int = 4) -> Any:
+    """Recursively truncate float values in dicts/lists to max decimal places."""
+    if isinstance(obj, float):
+        factor = 10 ** decimals
+        return math.trunc(obj * factor) / factor
+    elif isinstance(obj, dict):
+        return {k: _truncate_floats(v, decimals) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_truncate_floats(item, decimals) for item in obj]
+    return obj
 
 
 def _is_groq_json_length_error(exc: Exception) -> bool:
