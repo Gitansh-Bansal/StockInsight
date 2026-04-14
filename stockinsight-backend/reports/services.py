@@ -473,9 +473,7 @@ def _build_structured_prompt(
 
     return (
         "Role: Senior Financial Analyst\n"
-<<<<<<< Updated upstream
         "Task: Create an equity research report in the given output format based on the analysis results given in JSON input.\n"
-
         "The output should be produced in this output JSON format:\n"
         "JSON schema:\n"
         "{\n"
@@ -498,7 +496,6 @@ def _build_structured_prompt(
         "- For `technical`, avoid redundancy: do not repeat the same metric across bullets.\n"
         "- For `sentiment`, keep the bullets and summary in a single string value.\n"
         f"Input JSON:\n{json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}"
-=======
         "Task: Create an equity research report from the input JSON.\n"
         "Return one strict JSON object only (no markdown/code fences) with keys:\n"
         f"{required_keys}.\n"
@@ -513,7 +510,6 @@ def _build_structured_prompt(
         f"{full_report_rule}"
         "- Keep tone professional, concise, and neutral.\n\n"
         f"Input JSON:\n{json.dumps(_truncate_floats(payload, 4), ensure_ascii=True, separators=(',', ':'))}"
->>>>>>> Stashed changes
     )
 
 
