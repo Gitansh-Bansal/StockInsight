@@ -47,6 +47,7 @@ The backend is strictly divided into distinct domain-driven Django apps, each ta
 - Provides a `generate_report_bundle` service.
 - It receives aggregated metrics from the fundamental, technical, and sentiment analyses.
 - Synthesizes all disparate data points into a finalized, contextual narrative—serving as an executive summary for the user and determining an "Overall Score".
+- Uses an LLM fallback chain for reliability: Gemini is primary, Groq (gpt-oss) is used as fallback, and a deterministic placeholder report is returned if neither provider succeeds.
 
 ### 6. `discussions`
 **Purpose**: Manages the community forum and social layer of the application.
@@ -133,3 +134,9 @@ Evaluates qualitative news utilizing cutting-edge Financial NLP text classificat
 4. **Report Synthesis**: Once data is collated, the `reports` app is called upon to bundle these into a qualitative report.
 5. **Presentation**: Data returns to the frontend, displaying dynamic charting and the textual report. The user can export this info using the `PdfReportTemplate.tsx`.
 6. **Community Interaction**: The user logs in via `AuthPanel.tsx` and scrolls to the `DiscussionSection.tsx`, reading top opinions on "AAPL" and participating in threads routed to the backend's `discussions` module.
+
+---
+
+## Features Under Development
+
+- Implementation of a Random Forest model (using `scikit-learn`) to support final verdict generation.
