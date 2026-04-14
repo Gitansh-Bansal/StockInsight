@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 ReportSections = dict[str, str]
 ReportBundle = dict[str, Any]
 _DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
-_MAX_PROMPT_HEADLINES = 12
+_MAX_PROMPT_HEADLINES = 30
 _MAX_PROMPT_HEADLINE_CHARS = 140
 _DEFAULT_GROQ_MAX_COMPLETION_TOKENS = 1800
 _MAX_GROQ_RETRY_COMPLETION_TOKENS = 2600
@@ -472,19 +472,29 @@ def _build_structured_prompt(
 
     return (
         "Role: Senior Financial Analyst\n"
-        "Task: Create an equity research report from the input JSON.\n"
-        "Return one strict JSON object only (no markdown/code fences) with keys:\n"
-        f"{required_keys}.\n"
-        "Requirements:\n"
-        "- overall: 5-7 sentences; mention fundamental, technical, sentiment scores.\n"
-        "- fundamental: 4-6 unique `- ` bullets; include score, key metrics, and one valuation vs sectorPeersAnalysis point.\n"
-        "- technical: 4-6 unique `- ` bullets in one string; include score+bias, trend (SMA), momentum (RSI/MACD/ADX), structure (support/resistance/breakout/volume/fibonacci), and one watchout. Skip missing metrics.\n"
-        "- sentiment: one string with 3-5 `- ` bullets from headlines, then `Summary:` with 4-6 sentences mentioning score.\n"
-        "- riskFactors: 2-4 sentences.\n"
-        "- conclusion: 2-4 sentences including verdict.\n"
-        "- disclaimer: 1 sentence.\n"
-        f"{full_report_rule}"
-        "- Keep tone professional, concise, and neutral.\n\n"
+        "Task: Create an equity research report in the given output format based on the analysis results given in JSON input.\n"
+
+        "The output should be produced in this output JSON format:\n"
+        "JSON schema:\n"
+        "{\n"
+        '  "overall": "5-7 sentences: include component scores, and explain the result using the fundamental, technical and news sentiment metrics' \
+        '",\n'
+        '  "fundamental": "4-6 bullet points (use `- `). Make each bullet unique and specific. Mention the score and explain using the fundamental metrics. Include one bullet point comparing the company\'s valuation (trailing and forward P/E) to its sector peers based on the sectorPeersAnalysis data.",\n'
+        '  "technical": "4-6 bullet points (use `- `). Make each bullet unique and specific: include technical score + bias in one bullet, trend context (price vs SMA20/SMA50/SMA200) in one bullet, momentum context (RSI/MACD/ADX) in one bullet, and key levels/structure (support, resistance, breakout, volume spike, fibonacci) plus one risk/watchout. Skip missing metrics instead of repeating available ones",\n'
+        '  "sentiment": "Start with 3-5 bullet points (use `- `) highlighting the main insights from the news headlines, then add a `Summary:` paragraph of 4-6 sentences that mentions the score and explains the overall sentiment signal",\n'
+        '  "riskFactors": "2-4 sentences",\n'
+        '  "conclusion": "2-4 sentences: mention the final verdict and conclusion",\n'
+        '  "disclaimer": "1 sentence",\n'
+        '  "fullReportMarkdown": "full markdown report with matching sections"\n'
+        "}\n\n"
+
+        "Note:\n"
+        "- Keep the tone professional.\n"
+        "- Be concise and neutral.\n"
+        "- Return strict JSON only (no markdown code fences).\n"
+        "- For `technical`, keep the bullet points in a single string value.\n"
+        "- For `technical`, avoid redundancy: do not repeat the same metric across bullets.\n"
+        "- For `sentiment`, keep the bullets and summary in a single string value.\n"
         f"Input JSON:\n{json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}"
     )
 
@@ -500,16 +510,18 @@ def _build_json_retry_prompt(base_prompt: str) -> str:
 
 def _compact_sentiment_headlines(raw_headlines: Any) -> list[dict[str, Any]]:
     """
-    Keep prompt size bounded and stable; oversized noisy payloads increase
-    malformed/truncated JSON responses from the model.
+    Keep prompt size bounded and stable while prioritizing relevance:
+    - If positive_count + negative_count <= max: include all positive+negative,
+      then fill with highest-confidence neutral headlines.
+    - If positive_count + negative_count > max: sample positive/negative by
+      their original ratio, ranked by highest confidence in each class; any
+      rounding remainder is allocated to neutral headlines.
     """
     if not isinstance(raw_headlines, list):
         return []
 
-    compact: list[dict[str, Any]] = []
-    for headline in raw_headlines:
-        if len(compact) >= _MAX_PROMPT_HEADLINES:
-            break
+    indexed_headlines: list[tuple[int, dict[str, Any]]] = []
+    for idx, headline in enumerate(raw_headlines):
         if not isinstance(headline, dict):
             continue
         title = str(headline.get("title") or "").strip()
@@ -517,16 +529,82 @@ def _compact_sentiment_headlines(raw_headlines: Any) -> list[dict[str, Any]]:
             continue
         if len(title) > _MAX_PROMPT_HEADLINE_CHARS:
             title = f"{title[:_MAX_PROMPT_HEADLINE_CHARS - 1].rstrip()}..."
-        compact.append(
-            {
-                "title": title,
-                "source": headline.get("source"),
-                "publishedAt": headline.get("publishedAt"),
-                "sentiment": headline.get("sentiment"),
-                "sentimentScore": headline.get("sentimentScore"),
-            }
+        sentiment = str(headline.get("sentiment") or "neutral").strip().lower()
+        if sentiment not in {"positive", "negative", "neutral"}:
+            sentiment = "neutral"
+        score = _safe_confidence_score(headline.get("sentimentScore"))
+        indexed_headlines.append(
+            (
+                idx,
+                {
+                    "title": title,
+                    "source": headline.get("source"),
+                    "publishedAt": headline.get("publishedAt"),
+                    "sentiment": sentiment,
+                    "sentimentScore": score,
+                },
+            )
         )
-    return compact
+
+    def _rank(group: list[tuple[int, dict[str, Any]]]) -> list[tuple[int, dict[str, Any]]]:
+        # Higher confidence first; for ties prefer earlier input order.
+        return sorted(
+            group,
+            key=lambda item: (-_safe_confidence_score(item[1].get("sentimentScore")), item[0]),
+        )
+
+    positives = _rank([item for item in indexed_headlines if item[1].get("sentiment") == "positive"])
+    negatives = _rank([item for item in indexed_headlines if item[1].get("sentiment") == "negative"])
+    neutrals = _rank([item for item in indexed_headlines if item[1].get("sentiment") == "neutral"])
+
+    selected: list[dict[str, Any]] = []
+
+    polar_count = len(positives) + len(negatives)
+    if polar_count <= _MAX_PROMPT_HEADLINES:
+        selected.extend([entry for _, entry in positives])
+        selected.extend([entry for _, entry in negatives])
+        remaining = _MAX_PROMPT_HEADLINES - len(selected)
+        if remaining > 0:
+            selected.extend([entry for _, entry in neutrals[:remaining]])
+        return selected
+
+    # Proportional split for positive/negative when they exceed max.
+    positive_target = int((_MAX_PROMPT_HEADLINES * len(positives)) / polar_count)
+    negative_target = int((_MAX_PROMPT_HEADLINES * len(negatives)) / polar_count)
+
+    # Any integer-rounding leftover goes to neutrals as requested.
+    neutral_target = _MAX_PROMPT_HEADLINES - (positive_target + negative_target)
+
+    # Safety clamps to avoid impossible slices in edge cases.
+    positive_target = min(positive_target, len(positives))
+    negative_target = min(negative_target, len(negatives))
+
+    selected.extend([entry for _, entry in positives[:positive_target]])
+    selected.extend([entry for _, entry in negatives[:negative_target]])
+    if neutral_target > 0:
+        selected.extend([entry for _, entry in neutrals[:neutral_target]])
+
+    # If any slot remains after clamps, fill from whichever class has leftover.
+    remaining = _MAX_PROMPT_HEADLINES - len(selected)
+    if remaining > 0:
+        extra_negatives = negatives[negative_target:negative_target + remaining]
+        selected.extend([entry for _, entry in extra_negatives])
+        remaining = _MAX_PROMPT_HEADLINES - len(selected)
+    if remaining > 0:
+        extra_positives = positives[positive_target:positive_target + remaining]
+        selected.extend([entry for _, entry in extra_positives])
+
+    return selected
+
+
+def _safe_confidence_score(value: Any) -> float:
+    try:
+        parsed = float(value)
+        if parsed < 0:
+            return 0.0
+        return parsed
+    except Exception:
+        return 0.0
 
 
 def _compact_prompt_payload(value: Any) -> Any:
