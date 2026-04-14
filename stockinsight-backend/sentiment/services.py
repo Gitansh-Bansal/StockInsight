@@ -1,11 +1,12 @@
 """
-Sentiment analysis: fetch news for ticker, run FinBERT, return headlines and 0-100 score.
+Sentiment analysis: fetch news for ticker, run FinBERT via HF Inference API,
+return headlines and 0-100 score.
 Uses Finnhub as primary source, with NewsData.io, NewsAPI, and NewsAPI.ai as fallback.
 """
 import logging
 import os
 import re
-import threading
+import time
 import unicodedata
 from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
@@ -24,37 +25,120 @@ FINNHUB_DEFAULT_LOOKBACK_DAYS = 3
 NEWSAPIAI_ARTICLE_SEARCH_URL = "https://eventregistry.org/api/v1/article/getArticles"
 NEWSAPIAI_REALTIME_LOOKBACK_DAYS = 2
 
-# Lazy load FinBERT to avoid heavy import at Django startup
-_finbert_pipeline = None
-_finbert_lock = threading.Lock()
-_inference_lock = threading.Lock()
+# Hugging Face configuration
+HF_MODEL = "ProsusAI/finbert"
+HF_MAX_RETRIES = 3
+
+NEUTRAL_FALLBACK = [{"label": "neutral", "score": 1.0}]
 
 
-def _get_finbert():
-    global _finbert_pipeline
-    if _finbert_pipeline is not None:
-        return _finbert_pipeline
+def _query_hf_api(headlines_list: List[str]) -> List[List[dict]]:
+    """
+    Send headlines to the Hugging Face Inference API using batch processing.
+    Chunks inputs and verifies response integrity, falling back to individual calls if needed.
+    """
+    if not headlines_list:
+        return []
 
-    # Ensure only one thread performs the first model load.
-    with _finbert_lock:
-        if _finbert_pipeline is None:
+    api_key = os.environ.get("HUGGINGFACE_API_KEY")
+    if not api_key:
+        logger.warning("HUGGINGFACE_API_KEY not set; returning neutral fallback.")
+        return [NEUTRAL_FALLBACK] * len(headlines_list)
+
+    try:
+        from huggingface_hub import InferenceClient
+        client = InferenceClient(api_key=api_key)
+    except Exception as e:
+        logger.warning("Failed to create InferenceClient: %s", e)
+        return [NEUTRAL_FALLBACK] * len(headlines_list)
+
+    all_results = []
+    batch_size = 5 # Size reduced for maximum reliability on serverless API
+
+    import concurrent.futures
+
+    def _format_res(item: Any) -> List[dict]:
+        """Normalize a single classification result."""
+        if not item:
+            return NEUTRAL_FALLBACK
+        if isinstance(item, dict):
+            item = [item]
+        if isinstance(item, list):
+            formatted = []
+            for r in item:
+                if isinstance(r, dict):
+                    formatted.append({"label": r.get("label", "neutral"), "score": r.get("score", 1.0)})
+                elif hasattr(r, "label"):
+                    formatted.append({"label": getattr(r, "label", "neutral"), "score": getattr(r, "score", 1.0)})
+            return formatted if formatted else NEUTRAL_FALLBACK
+        return NEUTRAL_FALLBACK
+
+    all_results: List[List[dict]] = [None] * len(headlines_list)  # type: ignore[list-item]
+    batch_size = 5
+    
+    # We'll send batches in parallel to get speed back
+    chunks = [(i, headlines_list[i : i + batch_size]) for i in range(0, len(headlines_list), batch_size)]
+
+    def _process_chunk(start_idx: int, batch: List[str]) -> None:
+        batch_results = []
+        success = False
+        for attempt in range(1, HF_MAX_RETRIES + 1):
             try:
-                from transformers import pipeline
-
-                _finbert_pipeline = pipeline(
-                    "sentiment-analysis",
-                    model="ProsusAI/finbert",
-                    truncation=True,
-                    max_length=512,
-                )
+                raw_response = client.text_classification(batch, model=HF_MODEL)
+                if isinstance(raw_response, list) and len(raw_response) == len(batch):
+                    for item in raw_response:
+                        batch_results.append(_format_res(item))
+                    success = True
+                    break
+                else:
+                    break
             except Exception as e:
-                logger.warning("FinBERT not available: %s. Using fallback neutral score.", e)
-    return _finbert_pipeline
+                if "loading" in str(e).lower():
+                    time.sleep(15)
+                    continue
+        
+        if not success:
+            # Fallback for this specific batch
+            batch_results = []
+            for headline in batch:
+                res = NEUTRAL_FALLBACK
+                for inner in range(1, HF_MAX_RETRIES + 1):
+                    try:
+                        raw = client.text_classification(headline, model=HF_MODEL)
+                        res = _format_res(raw)
+                        break
+                    except Exception:
+                        if inner < HF_MAX_RETRIES: time.sleep(1)
+                batch_results.append(res)
+        
+        # Place results in the correct indices
+        for j, res in enumerate(batch_results):
+            if start_idx + j < len(all_results):
+                all_results[start_idx + j] = res
+
+    # Use 10 concurrent batch workers
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        for start_idx, batch in chunks:
+            executor.submit(_process_chunk, start_idx, batch)
+
+    # Fill any gaps
+    for i in range(len(all_results)):
+        if all_results[i] is None:
+            all_results[i] = NEUTRAL_FALLBACK
+
+    logger.info("HF API sentiment: processed %d headlines in parallel batches", len(headlines_list))
+    return all_results
+
 
 
 def preload_finbert_model() -> bool:
-    """Warm FinBERT weights once for this Django process."""
-    return _get_finbert() is not None
+    """Check that the HF API key is configured (no local model to warm)."""
+    load_dotenv()
+    api_key = os.environ.get("HUGGINGFACE_API_KEY")
+    if not api_key:
+        logger.warning("HUGGINGFACE_API_KEY not set; sentiment will use neutral fallback.")
+        return False
+    return True
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -176,17 +260,14 @@ def _parse_published_at(value: Any) -> datetime:
 def _analyze_with_finbert(headlines: List[str]) -> float:
     """
     Analyze a list of headlines and return a weighted sentiment score scaled to 0-100.
-    Under the hood FinBERT gives labels in {-1, 0, 1}, we average and map -1..1 to 0..100.
+    Calls HF Inference API; FinBERT gives labels in {positive, negative, neutral}.
+    We pick the top label per headline, average, and map -1..1 to 0..100.
     """
     if not headlines:
         return 50.0
 
-    pipe = _get_finbert()
-    if not pipe:
-        return 50.0
-
     try:
-        results = pipe(headlines)
+        results = _query_hf_api(headlines)
     except Exception as e:
         logger.warning("FinBERT batch analysis failed: %s", e)
         return 50.0
@@ -195,10 +276,12 @@ def _analyze_with_finbert(headlines: List[str]) -> float:
     total = 0.0
     count = 0
     for res in results:
-        label = (res.get("label") or "").lower()
+        # Each res is a list of label/score dicts; pick the top one
+        top = res[0] if isinstance(res, list) and res else res
+        label = (top.get("label") or "").lower()
         if label == "neutral":
             continue
-        conf = float(res.get("score") or 0.0)
+        conf = float(top.get("score") or 0.0)
         base = score_map.get(label, 0)
         total += base * conf
         count += 1
@@ -514,7 +597,7 @@ def get_sentiment_analysis(
         if finnhub_key:
             finnhub_headlines, finnhub_failed = _fetch_from_finnhub(ticker, finnhub_key)
 
-        fallback_used = finnhub_failed or len(finnhub_headlines) == 0
+        fallback_used = finnhub_failed or len(finnhub_headlines) < 10
         if fallback_used:
             if newsdata_key:
                 newsdata_headlines = _fetch_from_newsdataio(ticker, stock_name, newsdata_key)
@@ -604,14 +687,14 @@ def get_sentiment_analysis(
 
         # print(titles_for_model) #############################################
 
-        # Run FinBERT batch analysis
-        pipe = _get_finbert()
+        # Run FinBERT batch analysis via HF Inference API
         per_headline = []
-        if pipe and titles_for_model:
+        if titles_for_model:
             try:
-                with _inference_lock:
-                    results = pipe(titles_for_model)
+                results = _query_hf_api(titles_for_model)
                 for h, res in zip(limited, results):
+                    # Each res is a list of label/score dicts; pick the top one
+                    top = res[0] if isinstance(res, list) and res else res
                     per_headline.append(
                         {
                             "title": h["title"],
@@ -619,8 +702,8 @@ def get_sentiment_analysis(
                             "source": h.get("source", ""),
                             "apiSource": h.get("apiSource", "unknown"),
                             "publishedAt": h.get("publishedAt", ""),
-                            "sentiment": res.get("label", "neutral"),
-                            "sentimentScore": round(float(res.get("score", 0.0)), 3),
+                            "sentiment": top.get("label", "neutral"),
+                            "sentimentScore": round(float(top.get("score", 0.0)), 3),
                         }
                     )
             except Exception as e:

@@ -197,8 +197,8 @@ def _run_single_for_comparison(ticker: str) -> dict[str, Any] | None:
 
 def run_parallel_comparison(tickers: list[str]) -> dict[str, Any]:
     """
-    Run full analysis for multiple tickers concurrently in threads so all
-    tasks share one in-memory FinBERT instance in this Django process.
+    Run full analysis for multiple tickers concurrently in threads.
+    Sentiment analysis uses the HF Inference API (no local model).
 
     Returns { "results": { ticker: analysis_result | { "error": str } } }
     """
@@ -219,18 +219,18 @@ def run_parallel_comparison(tickers: list[str]) -> dict[str, Any]:
         len(clean_tickers),
     )
 
-    # Ensure FinBERT is loaded once before workers begin.
+    # Validate HF API key is available before workers begin.
     prewarm_started = time.perf_counter()
     finbert_ready = preload_finbert_model()
     _timing_log(
         timing_logs_enabled,
-        "PROCESS_STAGE finbert_prewarm ready=%s duration_s=%.3f",
+        "PROCESS_STAGE hf_api_check ready=%s duration_s=%.3f",
         finbert_ready,
         time.perf_counter() - prewarm_started,
     )
     if not finbert_ready:
         logger.warning(
-            "FinBERT prewarm failed before comparison; sentiment will use neutral fallback."
+            "HF API key not configured; sentiment will use neutral fallback."
         )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
