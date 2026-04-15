@@ -1,9 +1,18 @@
 import type { AnalysisResponse, AuthUser, ComparisonResponse, DiscussionListResponse, DiscussionPost, DiscussionReply, OhlcvPoint, SearchSuggestion, VoteResponse } from './types'
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
-  /\/$/,
-  '',
-)
+// const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
+//   /\/$/,
+//   '',
+// ) || 'http://20.219.136.14:8000';
+
+// const apiBaseUrl = 'http://20.219.136.14:80';
+
+const isProduction = window.location.hostname !== "localhost";
+
+export const apiBaseUrl = isProduction
+    ? "http://20.219.136.14"      // Used when deployed on Vercel
+    : "http://localhost:8000";    // Used when running locally
+
 
 const inFlightAnalysisRequests = new Map<string, Promise<AnalysisResponse>>()
 const inFlightSearchRequests = new Map<string, Promise<SearchSuggestion[]>>()

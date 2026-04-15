@@ -7,7 +7,7 @@ import time
 import concurrent.futures
 from datetime import datetime, UTC
 from typing import Any
-
+import gc
 from django.conf import settings
 
 from fundamental.services import get_fundamental_analysis
@@ -169,6 +169,11 @@ def run_full_analysis(
         datetime.now(UTC).isoformat(),
         time.perf_counter() - analysis_started_perf,
     )
+
+    if 'df' in locals(): del df 
+    if 'news_data' in locals(): del news_data
+
+    gc.collect()
 
     return {
         "ticker": ticker,

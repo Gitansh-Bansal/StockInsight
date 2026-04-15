@@ -46,10 +46,10 @@ _load_env_file(BASE_DIR / ".env")
 SECRET_KEY = 'django-insecure-g)--+orh3y7p4wmpkp&lql9z3=t1)&n+*^aq&t!9!bzy+#rcqk'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
-
+allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1')
+ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',') if host.strip()]
 
 # Application definition
 
@@ -155,13 +155,10 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173", # Default Vite port
-    "http://localhost:3000", # Default CRA port
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:3000",
-]
+cors_env = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000')
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_env.split(',') if origin.strip()]
 
 CORS_ALLOW_CREDENTIALS = True
 

@@ -53,7 +53,7 @@ def _query_hf_api(headlines_list: List[str]) -> List[List[dict]]:
         return [NEUTRAL_FALLBACK] * len(headlines_list)
 
     all_results = []
-    batch_size = 5 # Size reduced for maximum reliability on serverless API
+    batch_size = 20 # Size reduced for maximum reliability on serverless API
 
     import concurrent.futures
 
@@ -74,7 +74,7 @@ def _query_hf_api(headlines_list: List[str]) -> List[List[dict]]:
         return NEUTRAL_FALLBACK
 
     all_results: List[List[dict]] = [None] * len(headlines_list)  # type: ignore[list-item]
-    batch_size = 5
+    batch_size = 20
     
     # We'll send batches in parallel to get speed back
     chunks = [(i, headlines_list[i : i + batch_size]) for i in range(0, len(headlines_list), batch_size)]
@@ -117,7 +117,7 @@ def _query_hf_api(headlines_list: List[str]) -> List[List[dict]]:
                 all_results[start_idx + j] = res
 
     # Use 10 concurrent batch workers
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         for start_idx, batch in chunks:
             executor.submit(_process_chunk, start_idx, batch)
 
