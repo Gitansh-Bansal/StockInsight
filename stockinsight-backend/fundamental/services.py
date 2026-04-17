@@ -402,7 +402,6 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             revenue_trend = []
             margins_trend = []
             if inc is not None and not inc.empty:
-                logger.info("Income statement index labels: %s", list(inc.index))
                 for col in list(inc.columns)[:5]:
                     year = col.year if hasattr(col, 'year') else str(col)
                     
@@ -438,7 +437,6 @@ def get_fundamental_analysis(ticker: str) -> dict[str, Any] | None:
             cf = t.cashflow
             cashflow_trend = []
             if cf is not None and not cf.empty:
-                logger.info("Cashflow index labels: %s", list(cf.index))
                 for col in list(cf.columns)[:5]:
                     year = col.year if hasattr(col, 'year') else str(col)
                     op_val = _find_row_value(cf, col,
