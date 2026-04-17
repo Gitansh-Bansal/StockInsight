@@ -79,7 +79,7 @@ function App() {
       const saved = localStorage.getItem('theme')
       if (saved === 'dark' || saved === 'light') return saved
     } catch {}
-    return 'dark'
+    return 'light'
   })
 
   useEffect(() => {
