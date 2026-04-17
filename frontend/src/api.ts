@@ -7,12 +7,13 @@ import type { AnalysisResponse, AuthUser, ComparisonResponse, DiscussionListResp
 
 // const apiBaseUrl = 'http://20.219.136.14:80';
 
-const isProduction = window.location.hostname !== "localhost";
+// Grab the URL from Vercel's environment variables.
+// Make sure your Vercel variable is named EXACTLY VITE_API_BASE_URL
+const envApiUrl = import.meta.env.VITE_API_BASE_URL;
 
-export const apiBaseUrl = isProduction
-    ? "http://20.219.136.14"      // Used when deployed on Vercel
-    : "http://localhost:8000";    // Used when running locally
-
+// If the environment variable exists (like on Vercel), use it.
+// If it doesn't exist (like when you run 'npm run dev' locally), fall back to localhost.
+export const apiBaseUrl = envApiUrl ? envApiUrl : "http://localhost:8000";
 
 const inFlightAnalysisRequests = new Map<string, Promise<AnalysisResponse>>()
 const inFlightSearchRequests = new Map<string, Promise<SearchSuggestion[]>>()
