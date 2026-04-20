@@ -17,7 +17,7 @@
   width: 794px;
   height: 1122px;
   background: #0d1b2e;
-  font-family: 'Geneva', 'Verdana', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   color: #e2e8f0;
   font-size: 11px;
   line-height: 1.4;
@@ -58,7 +58,7 @@
   letter-spacing: 0.02em;
   color: #7dd3fc;
   margin: 0 0 8px 0;
-  font-family: 'Lucida Grande', 'Geneva', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
 /* ── Header Strip ──────────────────────────────────── */
@@ -97,7 +97,7 @@
   display: block;
   line-height: 1.1;
   margin-bottom: 2px;
-  font-family: 'Lucida Grande', 'Geneva', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
 .pdf-header-exchange {

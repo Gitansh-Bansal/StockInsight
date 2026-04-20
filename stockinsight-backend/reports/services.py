@@ -175,6 +175,7 @@ def generate_report_bundle(
     sentiment_result: dict[str, Any] | None,
     overall_score: float,
     verdict: str,
+    predicted_score: float | None = None,
 ) -> ReportBundle:
     """
     Generate sectioned LLM report. Returns:
@@ -200,6 +201,7 @@ def generate_report_bundle(
         sentiment_result=sentiment_result,
         overall_score=overall_score,
         verdict=verdict,
+        predicted_score=predicted_score,
     )
     groq_prompt = _build_structured_prompt(
         ticker=ticker,
@@ -208,6 +210,7 @@ def generate_report_bundle(
         sentiment_result=sentiment_result,
         overall_score=overall_score,
         verdict=verdict,
+        predicted_score=predicted_score,
         include_full_report_markdown=False,
     )
 
@@ -312,6 +315,7 @@ def generate_report(
     sentiment_result: dict[str, Any] | None,
     overall_score: float,
     verdict: str,
+    predicted_score: float | None = None,
 ) -> str:
     """Backward-compatible string report API."""
     bundle = generate_report_bundle(
@@ -321,6 +325,7 @@ def generate_report(
         sentiment_result=sentiment_result,
         overall_score=overall_score,
         verdict=verdict,
+        predicted_score=predicted_score,
     )
     return str(bundle.get("fullReport") or "")
 
@@ -375,6 +380,7 @@ def _build_structured_prompt(
     sentiment_result: dict[str, Any] | None,
     overall_score: float,
     verdict: str,
+    predicted_score: float | None = None,
     include_full_report_markdown: bool = True,
 ) -> str:
     fundamental_data = (fundamental_result or {}).get("data") or {}
@@ -385,6 +391,7 @@ def _build_structured_prompt(
     payload = _compact_prompt_payload({
         "ticker": ticker.upper(),
         "overallScore": overall_score,
+        "predictedScore": predicted_score,
         "verdict": verdict,
         # "scoringSystem": {
         #     "overallWeights": {

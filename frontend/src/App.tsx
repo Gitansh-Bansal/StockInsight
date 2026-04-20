@@ -590,7 +590,7 @@ function HomePage({ onSearch, onCompare, user }: HomePageProps) {
       <section className="hero">
         <div className="hero-single">
           <div className="hero-single-bg" aria-hidden="true" />
-          <h1>StockInsight</h1>
+          <img src="/stockinsight_logo.svg" alt="StockInsight Logo" className="hero-logo" />
           {greeting && <p className="hero-greeting">{greeting}</p>}
           <StockSearchForm
             className="hero-search"
@@ -1714,11 +1714,16 @@ function OverviewSection({ overview, llmSummary, technical, sentimentLlm, ticker
             </div>
           </div>
           <div className="overview-scores-column">
-            <div className={`overview-score-card verdict-card tone-${toneFromVerdict(overview.verdict)}`}>
+            <div className={`overview-score-card verdict-card tone-${toneFromScore(overview.predictedScore, 65, 45)}`}>
               <span className="overview-score-label">Verdict</span>
               <strong className="overview-score-value">{overview.verdict}</strong>
+              {overview.predictedScore !== null && (
+                <span className="overview-score-band">
+                  ML Prediction: {formatScore(overview.predictedScore)}
+                </span>
+              )}
             </div>
-            <div className={`overview-score-card overall tone-${toneFromVerdict(overview.verdict)}`}>
+            <div className={`overview-score-card overall tone-${toneFromScore(overview.overallScore, 60, 40)}`}>
               <span className="overview-score-label">Overall Score</span>
               <strong className="overview-score-value">{formatScore(overview.overallScore)}</strong>
               <span className="overview-score-band">{scoreBand(overview.overallScore)}</span>
@@ -4927,6 +4932,13 @@ function toneFromVerdict(verdict: string): string {
     return 'negative'
   }
   return 'neutral'
+}
+
+function toneFromScore(score: number | null, up: number = 60, down: number = 40): string {
+  if (score === null) return 'neutral'
+  if (score >= up) return 'positive'
+  if (score >= down) return 'neutral'
+  return 'negative'
 }
 
 function formatNumber(value: number | null | undefined): string {

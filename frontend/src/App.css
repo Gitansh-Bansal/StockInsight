@@ -447,6 +447,13 @@ html.dark .top-dropdown-menu {
   background-clip: text;
 }
 
+.hero-logo {
+  height: clamp(80px, 12vw, 140px);
+  width: auto;
+  margin: 0 auto 1.5rem;
+  display: block;
+}
+
 .hero-single h2 {
   margin: 0.6rem 0 0;
   font-size: 1rem;

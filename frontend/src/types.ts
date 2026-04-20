@@ -12,6 +12,7 @@ export interface OverviewData {
   technicalScore: NullableScore
   sentimentScore: NullableScore
   overallScore: number
+  predictedScore: number | null
   verdict: string
 }
 

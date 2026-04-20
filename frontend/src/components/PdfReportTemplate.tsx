@@ -434,11 +434,16 @@ export const PdfReportTemplate = forwardRef<HTMLDivElement, PdfReportTemplatePro
               <span className="pdf-stat-label">Market Cap</span>
               <span className="pdf-stat-value">{marketCap}</span>
             </div>
-            <div className="pdf-header-card pdf-header-stat-wrap" style={{ flex: '1.2' }}>
-              <span className="pdf-stat-label">Overall Insight Score</span>
-              <span className={`pdf-consensus-badge tone-${isFinite_(overallScore) ? (overallScore >= 60 ? 'positive' : overallScore >= 40 ? 'neutral' : 'negative') : 'neutral'}`}>
-                {isFinite_(overallScore) ? `${overallScore.toFixed(1)} - ${analysis.overview.verdict?.toUpperCase() || (overallScore >= 60 ? 'BUY' : overallScore >= 40 ? 'HOLD' : 'SELL')}` : 'N/A'}
-              </span>
+            <div className="pdf-header-card pdf-header-stat-wrap" style={{ flex: '1.4' }}>
+              <span className="pdf-stat-label">Overall &amp; Prediction</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span className={`pdf-consensus-badge tone-${isFinite_(overallScore) ? (overallScore >= 60 ? 'positive' : overallScore >= 40 ? 'neutral' : 'negative') : 'neutral'}`} style={{fontSize: '10px', padding: '1px 4px'}}>
+                  {isFinite_(overallScore) ? `Score: ${overallScore.toFixed(1)}` : 'Score: N/A'}
+                </span>
+                <span className={`pdf-consensus-badge tone-${analysis.overview.predictedScore !== null ? (analysis.overview.predictedScore >= 65 ? 'positive' : analysis.overview.predictedScore >= 45 ? 'neutral' : 'negative') : 'neutral'}`}>
+                  {analysis.overview.verdict?.toUpperCase() || 'N/A'} (ML: {isFinite_(analysis.overview.predictedScore) ? `${analysis.overview.predictedScore.toFixed(1)}` : 'N/A'})
+                </span>
+              </div>
             </div>
             <div className="pdf-header-card pdf-header-stat-wrap">
               <span className="pdf-stat-label">Target Price</span>

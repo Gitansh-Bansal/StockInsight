@@ -14,6 +14,7 @@ from fundamental.services import get_fundamental_analysis
 from technical.services import get_technical_analysis
 from sentiment.services import get_sentiment_analysis, preload_finbert_model
 from reports.services import generate_report_bundle
+from analysis.ml_service import predict_overall_score
 
 logger = logging.getLogger(__name__)
 timing_logger = logging.getLogger("analysis.timing")
@@ -22,6 +23,29 @@ timing_logger = logging.getLogger("analysis.timing")
 WEIGHT_FUNDAMENTAL = 0.35
 WEIGHT_TECHNICAL = 0.35
 WEIGHT_SENTIMENT = 0.30
+
+# VIX cache (refreshed at most once per hour)
+_vix_cache: dict[str, Any] = {"value": None, "fetched_at": 0.0}
+_VIX_TTL_SECONDS = 3600
+
+
+def _get_vix_level() -> float | None:
+    """Fetch the latest VIX close, cached for 1 hour."""
+    now = time.time()
+    if _vix_cache["value"] is not None and (now - _vix_cache["fetched_at"]) < _VIX_TTL_SECONDS:
+        return _vix_cache["value"]
+    try:
+        import yfinance as yf
+        vix = yf.Ticker("^VIX")
+        hist = vix.history(period="5d")
+        if hist is not None and not hist.empty:
+            val = round(float(hist["Close"].iloc[-1]), 2)
+            _vix_cache["value"] = val
+            _vix_cache["fetched_at"] = now
+            return val
+    except Exception as e:
+        logger.warning("Failed to fetch VIX: %s", e)
+    return _vix_cache["value"]  # return stale value if available
 
 
 def _timing_log(enabled: bool, message: str, *args: Any) -> None:
@@ -127,10 +151,46 @@ def run_full_analysis(
     technical_score = technical_result.get("score") if technical_result else None
     sentiment_score = sentiment_result.get("score") if sentiment_result else None
 
+    # Overall Score: weighted average of pillar scores (deterministic)
     overall_score = _compute_overall_score(
         fundamental_score, technical_score, sentiment_score
     )
-    verdict = _compute_verdict(overall_score)
+
+    # Extract additional features for ML model
+    sector = None
+    stock_beta = None
+    peg_ratio = None
+    if fundamental_result and fundamental_result.get("data"):
+        fdata = fundamental_result["data"]
+        sector = fdata.get("sector")
+        stock_beta = fdata.get("beta")
+        peg_ratio = fdata.get("pegRatio")
+
+    rsi_14 = None
+    if technical_result and technical_result.get("indicators"):
+        rsi_14 = technical_result["indicators"].get("RSI")
+
+    vix_level = _get_vix_level()
+
+    # Predicted Score: ML model's 30-day upside probability (0-100)
+    predicted_score = predict_overall_score(
+        fundamental_score=fundamental_score,
+        technical_score=technical_score,
+        sentiment_score=sentiment_score,
+        sector=sector,
+        vix_level=vix_level,
+        stock_beta=stock_beta,
+        peg_ratio=peg_ratio,
+        rsi_14=rsi_14,
+    )
+    if predicted_score is not None:
+        logger.info("ML predicted score for %s: %.1f", ticker, predicted_score)
+    else:
+        logger.info("ML model unavailable for %s; using overall score for verdict", ticker)
+
+    # Verdict: derived from ML predicted score (falls back to overall score)
+    verdict_basis = predicted_score if predicted_score is not None else overall_score
+    verdict = _compute_verdict(verdict_basis)
 
     report_bundle: dict[str, Any] = {
         "source": "disabled",
@@ -153,6 +213,7 @@ def run_full_analysis(
             sentiment_result=sentiment_result,
             overall_score=overall_score,
             verdict=verdict,
+            predicted_score=predicted_score,
         )
         _timing_log(
             timing_logs_enabled,
@@ -182,6 +243,7 @@ def run_full_analysis(
             "technicalScore": technical_score,
             "sentimentScore": sentiment_score,
             "overallScore": overall_score,
+            "predictedScore": predicted_score,
             "verdict": verdict,
         },
         "fundamental": fundamental_result,
