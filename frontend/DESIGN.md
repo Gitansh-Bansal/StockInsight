@@ -11,7 +11,6 @@ The frontend of the StockInsight application is built as a React Single Page App
 * **`src/components/`**: Externalized React components. Includes:
   * `AuthPanel.tsx` - Login/Signup presentation logic.
   * `DiscussionSection.tsx` - Component for community discussions.
-  * `PdfReportTemplate.tsx` - Layout component focused purely on generating PDF reports.
   * `StockSearchForm.tsx` - Search input form handling.
 * **`src/App.css` / `src/index.css`**: Global design and Vanilla CSS styles.
 

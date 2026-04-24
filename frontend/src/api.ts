@@ -286,6 +286,84 @@ export async function fetchAnalysisReport(
   })
 }
 
+export async function downloadAnalysisPdf(
+  analysis: AnalysisResponse,
+): Promise<Blob> {
+  const cleanTicker = analysis.ticker.trim().toUpperCase()
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 90_000)
+  let primaryErrorMessage = ''
+
+  const parseError = async (response: Response, fallback: string): Promise<string> => {
+    const payload = await readJson(response)
+    return typeof payload.error === 'string' ? payload.error : fallback
+  }
+
+  const postPayloadPdf = async (path: string, csrfToken: string): Promise<Response> =>
+    fetch(apiUrl(path), {
+      method: 'POST',
+      credentials: 'include',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+      },
+      body: JSON.stringify({
+        ...analysis,
+        ticker: cleanTicker,
+      }),
+    })
+
+  try {
+    let csrfToken = ''
+    try {
+      csrfToken = await ensureCsrfToken()
+    } catch (error) {
+      primaryErrorMessage =
+        error instanceof Error ? error.message : 'Unable to initialize secure session.'
+    }
+
+    if (csrfToken) {
+      for (const path of ['/api/analysis/generate-pdf', '/api/analysis/pdf']) {
+        const response = await postPayloadPdf(path, csrfToken)
+        if (response.ok) {
+          return response.blob()
+        }
+
+        const errorMessage = await parseError(response, 'Failed to generate PDF report.')
+        if (!primaryErrorMessage) {
+          primaryErrorMessage = errorMessage
+        }
+      }
+    }
+
+    // Demo safety fallback: legacy endpoint may rerun analysis, but avoids broken UX.
+    const legacyResponse = await fetch(
+      apiUrl(`/api/analysis/${encodeURIComponent(cleanTicker)}/pdf?include_report=false`),
+      {
+        credentials: 'include',
+        signal: controller.signal,
+      },
+    )
+    if (legacyResponse.ok) {
+      return legacyResponse.blob()
+    }
+
+    const legacyError = await parseError(
+      legacyResponse,
+      primaryErrorMessage || 'Failed to generate PDF report.',
+    )
+    throw new Error(legacyError || primaryErrorMessage || 'Failed to generate PDF report.')
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('PDF generation timed out. Please try again.')
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
 export async function fetchChartData(
   ticker: string,
   duration: string,

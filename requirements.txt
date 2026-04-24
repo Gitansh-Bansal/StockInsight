@@ -17,3 +17,16 @@ huggingface_hub
 joblib==1.5.3
 scikit-learn==1.8.0
 scipy==1.17.1
+weasyprint==62.3
+
+# Explicit WeasyPrint runtime dependencies (pulled transitively, listed here for stability)
+cffi
+tinycss2
+cssselect2
+pydyf==0.11.0
+Pillow
+Pyphen
+fonttools[woff]
+
+# NOTE (Windows): WeasyPrint also needs system GTK/Pango/Cairo libraries.
+# These are not pip-installable via requirements.txt.

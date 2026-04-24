@@ -8,10 +8,9 @@ import {
 import './App.css'
 import { AuthPanel } from './components/AuthPanel'
 import { StockSearchForm } from './components/StockSearchForm'
-import { changeUserPassword, completeGoogleSignup, fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, loginWithGoogle, logoutUser, registerUser } from './api'
+import { changeUserPassword, completeGoogleSignup, downloadAnalysisPdf, fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, loginWithGoogle, logoutUser, registerUser } from './api'
 import type { GoogleAuthResult } from './api'
 import { DiscussionSection } from './components/DiscussionSection'
-import { PdfReportTemplate } from './components/PdfReportTemplate'
 import type {
   AnalysisResponse,
   AuthMode,
@@ -3510,63 +3509,36 @@ function FullReportSection({
   user?: import('./types').AuthUser | null
   theme?: 'light' | 'dark'
 }) {
-  const pdfRef = useRef<HTMLDivElement | null>(null)
-  const [isDownloading, setIsDownloading] = useState(false)
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+  const [pdfDownloadError, setPdfDownloadError] = useState('')
 
   const handleDownloadPdf = useCallback(async () => {
-    const wrapper = pdfRef.current
-    if (!wrapper) return
-    setIsDownloading(true)
-    try {
-      const html2canvas = (await import('html2canvas')).default
-      const { jsPDF } = await import('jspdf')
-
-      // Collect all individual page divs
-      const pages = Array.from(wrapper.querySelectorAll<HTMLElement>('.pdf-page'))
-      if (pages.length === 0) return
-
-      // Temporarily reveal wrapper
-      wrapper.style.position = 'absolute'
-      wrapper.style.left = '0'
-      wrapper.style.top = '0'
-      wrapper.style.zIndex = '9999'
-      wrapper.style.opacity = '1'
-
-      const pdfWidth = 210  // mm
-      const pdfHeight = 297 // mm A4
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i]
-        const canvas = await html2canvas(page, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: '#f0f3f8',
-          width: 794,
-          windowWidth: 1200,
-        })
-        const imgData = canvas.toDataURL('image/png')
-        const imgH = (canvas.height * pdfWidth) / canvas.width
-        if (i > 0) pdf.addPage()
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(imgH, pdfHeight))
-      }
-
-      // Restore hidden position
-      wrapper.style.left = '-9999px'
-      wrapper.style.zIndex = '-1'
-      wrapper.style.opacity = '1'
-
-      pdf.save(`${analysis.ticker}_StockInsight_Report.pdf`)
-    } catch (err) {
-      console.error('PDF generation failed:', err)
-      if (pdfRef.current) {
-        pdfRef.current.style.left = '-9999px'
-        pdfRef.current.style.zIndex = '-1'
-      }
-    } finally {
-      setIsDownloading(false)
+    if (isDownloadingPdf) {
+      return
     }
-  }, [analysis.ticker])
+    setPdfDownloadError('')
+    setIsDownloadingPdf(true)
+    try {
+      const pdfBlob = await downloadAnalysisPdf(analysis)
+      const objectUrl = window.URL.createObjectURL(pdfBlob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = `${analysis.ticker}_StockInsight_Report.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 800)
+    } catch (error) {
+      setPdfDownloadError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to generate PDF report.',
+      )
+    } finally {
+      setIsDownloadingPdf(false)
+    }
+  }, [analysis.ticker, isDownloadingPdf])
+
   const reportText = normalizeInlineBulletLists(
     emphasizeSummaryLabel(analysis.report?.trim() ?? ''),
   )
@@ -3976,9 +3948,6 @@ function FullReportSection({
 
   return (
     <article className={`full-report-dashboard reveal theme-${theme}`}>
-      {/* Hidden PDF template for capture */}
-      <PdfReportTemplate ref={pdfRef} analysis={analysis} />
-
       <div className="full-report-top-bar">
         <nav className="full-report-breadcrumbs" aria-label="Report breadcrumb">
           <span>{sectorLabel}</span>
@@ -3990,14 +3959,14 @@ function FullReportSection({
         {user && (
           <button
             type="button"
-            className="pdf-download-btn"
+            className="report-download-btn"
             onClick={handleDownloadPdf}
-            disabled={isDownloading || isGeneratingReport}
+            disabled={isDownloadingPdf}
           >
-            {isDownloading ? (
+            {isDownloadingPdf ? (
               <>
-                <span className="pdf-download-spinner" aria-hidden="true" />
-                Generating PDF…
+                <span className="report-download-spinner" aria-hidden="true" />
+                Generating PDF...
               </>
             ) : (
               <>
@@ -4010,6 +3979,11 @@ function FullReportSection({
           </button>
         )}
       </div>
+      {pdfDownloadError && (
+        <p className="full-report-download-error" role="status">
+          {pdfDownloadError}
+        </p>
+      )}
 
       <section className="full-report-hero">
         <div className="full-report-hero-left">
