@@ -689,6 +689,294 @@ function HomePage({ onSearch, onCompare, user }: HomePageProps) {
   )
 }
 
+function CompareSparkline({ ohlcv, color }: { ohlcv: OhlcvPoint[]; color: string }) {
+  if (!ohlcv || ohlcv.length === 0) return null
+  const closes = ohlcv.map((p) => p.close)
+  const min = Math.min(...closes)
+  const max = Math.max(...closes)
+  const range = max - min || 1
+  const width = 120
+  const height = 40
+  const points = closes.map((c, i) => `${(i / (closes.length - 1)) * width},${height - ((c - min) / range) * height}`).join(' ')
+  return (
+    <svg width="100%" height={height} viewBox={`0 -4 ${width} ${height + 8}`} className="compare-sparkline" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <polyline points={points} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function getBestMetrics(results: ComparisonResponse | null, orderedTickers: string[]) {
+  const metrics = {
+    overallScore: { val: -Infinity, ticker: '' },
+    pe: { val: Infinity, ticker: '' },
+    roe: { val: -Infinity, ticker: '' },
+    debtToEquity: { val: Infinity, ticker: '' },
+    revenueGrowth: { val: -Infinity, ticker: '' },
+    earningsGrowth: { val: -Infinity, ticker: '' },
+    profitMargins: { val: -Infinity, ticker: '' },
+    forwardPE: { val: Infinity, ticker: '' },
+    priceToBook: { val: Infinity, ticker: '' },
+    currentRatio: { val: -Infinity, ticker: '' },
+    fundamental: { val: -Infinity, ticker: '' },
+    technical: { val: -Infinity, ticker: '' },
+    sentiment: { val: -Infinity, ticker: '' },
+    rsi: { val: -Infinity, ticker: '' },
+    prox52WHigh: { val: -Infinity, ticker: '' },
+    prox52WLow: { val: -Infinity, ticker: '' },
+  }
+
+  if (!results) return metrics
+
+  for (const t of orderedTickers) {
+    const r = results.results[t]
+    if (!r || 'error' in r) continue
+    const res = r as AnalysisResponse
+    
+    const os = res.overview.predictedScore ?? res.overview.overallScore
+    if (os != null && os > metrics.overallScore.val) { metrics.overallScore = { val: os, ticker: t } }
+
+    const pe = res.fundamental?.data?.trailingPE
+    if (pe != null && pe > 0 && pe < metrics.pe.val) { metrics.pe = { val: pe, ticker: t } }
+
+    const roe = res.fundamental?.data?.returnOnEquity
+    if (roe != null && roe > metrics.roe.val) { metrics.roe = { val: roe, ticker: t } }
+
+    const de = res.fundamental?.data?.debtToEquity
+    if (de != null && de >= 0 && de < metrics.debtToEquity.val) { metrics.debtToEquity = { val: de, ticker: t } }
+
+    const rg = res.fundamental?.data?.revenueGrowth
+    if (rg != null && rg > metrics.revenueGrowth.val) { metrics.revenueGrowth = { val: rg, ticker: t } }
+
+    const eg = res.fundamental?.data?.earningsGrowth
+    if (eg != null && eg > metrics.earningsGrowth.val) { metrics.earningsGrowth = { val: eg, ticker: t } }
+
+    const pm = res.fundamental?.data?.profitMargins
+    if (pm != null && pm > metrics.profitMargins.val) { metrics.profitMargins = { val: pm, ticker: t } }
+
+    const fpe = res.fundamental?.data?.forwardPE
+    if (fpe != null && fpe > 0 && fpe < metrics.forwardPE.val) { metrics.forwardPE = { val: fpe, ticker: t } }
+
+    const pb = res.fundamental?.data?.priceToBook
+    if (pb != null && pb > 0 && pb < metrics.priceToBook.val) { metrics.priceToBook = { val: pb, ticker: t } }
+
+    const cr = res.fundamental?.data?.currentRatio
+    if (cr != null && cr > metrics.currentRatio.val) { metrics.currentRatio = { val: cr, ticker: t } }
+
+    const fs = res.overview.fundamentalScore
+    if (fs != null && fs > metrics.fundamental.val) { metrics.fundamental = { val: fs, ticker: t } }
+
+    const ts = res.overview.technicalScore
+    if (ts != null && ts > metrics.technical.val) { metrics.technical = { val: ts, ticker: t } }
+
+    const ss = res.overview.sentimentScore
+    if (ss != null && ss > metrics.sentiment.val) { metrics.sentiment = { val: ss, ticker: t } }
+
+    const rsi = res.technical?.indicators?.RSI
+    if (rsi != null && rsi > metrics.rsi.val) { metrics.rsi = { val: rsi, ticker: t } }
+
+    const price = res.fundamental?.data?.currentPrice ?? res.technical?.indicators?.close
+    const high52 = res.fundamental?.data?.['52WeekHigh']
+    const low52 = res.fundamental?.data?.['52WeekLow']
+
+    if (price != null && high52 != null && high52 > 0) {
+      const proxH = price / high52
+      if (proxH > metrics.prox52WHigh.val) { metrics.prox52WHigh = { val: proxH, ticker: t } }
+    }
+    
+    if (price != null && low52 != null && low52 > 0) {
+      const proxL = price / low52
+      if (proxL > metrics.prox52WLow.val) { metrics.prox52WLow = { val: proxL, ticker: t } }
+    }
+  }
+
+  return metrics
+}
+
+function CompareCard({
+  ticker,
+  result,
+  error,
+  bestMetrics,
+  onRemove,
+  onView
+}: {
+  ticker: string
+  result: AnalysisResponse | null
+  error: string | null
+  bestMetrics: ReturnType<typeof getBestMetrics>
+  onRemove: () => void
+  onView: () => void
+}) {
+  if (error || !result) {
+    return (
+      <div className="compare-card error-card">
+        <div className="cc-header-top">
+          <h3>{ticker}</h3>
+          <button type="button" className="cc-remove" onClick={onRemove}>×</button>
+        </div>
+        <p className="cc-error">{error ?? 'Loading...'}</p>
+      </div>
+    )
+  }
+
+  const fd = result.fundamental?.data
+  const td = result.technical
+  const ov = result.overview
+  const sd = result.sentiment
+
+  const price = fd?.currentPrice ?? td?.indicators?.close
+  const currency = fd?.currency ?? td?.currency ?? 'USD'
+  
+  const isBestOS = bestMetrics.overallScore.ticker === ticker
+  const isBestPE = bestMetrics.pe.ticker === ticker
+  const isBestROE = bestMetrics.roe.ticker === ticker
+  const isBestDE = bestMetrics.debtToEquity.ticker === ticker
+  const isBestRG = bestMetrics.revenueGrowth.ticker === ticker
+  const isBestEG = bestMetrics.earningsGrowth.ticker === ticker
+  const isBestPM = bestMetrics.profitMargins.ticker === ticker
+  const isBestFPE = bestMetrics.forwardPE.ticker === ticker
+  const isBestPB = bestMetrics.priceToBook.ticker === ticker
+  const isBestCR = bestMetrics.currentRatio.ticker === ticker
+  const isBestRSI = bestMetrics.rsi.ticker === ticker
+  const isBest52H = bestMetrics.prox52WHigh.ticker === ticker
+  const isBest52L = bestMetrics.prox52WLow.ticker === ticker
+
+  const toneColor = toneFromVerdict(ov.verdict) === 'positive' ? 'var(--soft-mint)' : toneFromVerdict(ov.verdict) === 'negative' ? 'var(--soft-coral)' : 'var(--muted)'
+
+  const formatVal = (v: number | undefined | null, type: 'pct' | 'num' | 'curr' = 'num', curr = 'USD') => {
+    if (v == null) return '—'
+    if (type === 'pct') return `${(v * 100).toFixed(1)}%`
+    if (type === 'curr') return formatCurrency(v, curr)
+    return v.toFixed(2)
+  }
+
+  return (
+    <div className="compare-card">
+      <div className="cc-header">
+        <div className="cc-header-top">
+          <div className="cc-title">
+            <h3>{ticker}</h3>
+            <span className="cc-name" title={fd?.shortName ?? fd?.longName}>{fd?.shortName ?? fd?.longName ?? ticker}</span>
+          </div>
+          <button type="button" className="cc-remove" onClick={onRemove} aria-label={`Remove ${ticker}`}>×</button>
+        </div>
+        <div className="cc-price-row">
+          <span className="cc-price">{formatVal(price, 'curr', currency)}</span>
+          <span className={`cc-score ${isBestOS ? 'best-metric' : ''}`}>
+             ML Prediction: <strong className={`tone-${toneFromVerdict(ov.verdict)}`}>{(ov.predictedScore ?? ov.overallScore).toFixed(1)}</strong>
+          </span>
+        </div>
+        <div className={`cc-verdict tone-${toneFromVerdict(ov.verdict)}`}>{ov.verdict}</div>
+      </div>
+
+      <div className="cc-sparkline-container">
+        {td?.ohlcv && <CompareSparkline ohlcv={td.ohlcv.slice(-30)} color={toneColor} />}
+        <span className="cc-spark-label">30-Day Trend</span>
+      </div>
+
+      <div className="cc-section cc-scores-breakdown">
+        <h4>Component Scores</h4>
+        <div className="cc-metric-row">
+          <span>Fundamental</span>
+          <span className={`cc-val ${bestMetrics.fundamental.ticker === ticker ? 'best-metric' : ''}`}>{formatVal(ov.fundamentalScore)}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Technical</span>
+          <span className={`cc-val ${bestMetrics.technical.ticker === ticker ? 'best-metric' : ''}`}>{formatVal(ov.technicalScore)}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Sentiment</span>
+          <span className={`cc-val ${bestMetrics.sentiment.ticker === ticker ? 'best-metric' : ''}`}>{formatVal(ov.sentimentScore)}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Overall (Base)</span>
+          <span className={`cc-val ${bestMetrics.overallScore.ticker === ticker ? 'best-metric' : ''}`}>{formatVal(ov.overallScore)}</span>
+        </div>
+      </div>
+
+      <div className="cc-section">
+        <h4>Valuation & Health</h4>
+        <div className="cc-metric-row">
+          <span>P/E (Trailing)</span>
+          <span className={`cc-val ${isBestPE ? 'best-metric' : ''}`}>{formatVal(fd?.trailingPE)}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Forward P/E</span>
+          <span className={`cc-val ${isBestFPE ? 'best-metric' : ''}`}>{formatVal(fd?.forwardPE)}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Price/Book</span>
+          <span className={`cc-val ${isBestPB ? 'best-metric' : ''}`}>{formatVal(fd?.priceToBook)}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Debt/Equity</span>
+          <span className={`cc-val ${isBestDE ? 'best-metric' : ''}`}>{formatVal(fd?.debtToEquity)}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Current Ratio</span>
+          <span className={`cc-val ${isBestCR ? 'best-metric' : ''}`}>{formatVal(fd?.currentRatio)}</span>
+        </div>
+      </div>
+
+      <div className="cc-section">
+        <h4>Growth & Margins</h4>
+        <div className="cc-metric-row">
+          <span>Revenue Growth</span>
+          <span className={`cc-val ${isBestRG ? 'best-metric' : ''}`}>{formatVal(fd?.revenueGrowth, 'pct')}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Earnings Growth</span>
+          <span className={`cc-val ${isBestEG ? 'best-metric' : ''}`}>{formatVal(fd?.earningsGrowth, 'pct')}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Profit Margin</span>
+          <span className={`cc-val ${isBestPM ? 'best-metric' : ''}`}>{formatVal(fd?.profitMargins, 'pct')}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>ROE</span>
+          <span className={`cc-val ${isBestROE ? 'best-metric' : ''}`}>{formatVal(fd?.returnOnEquity, 'pct')}</span>
+        </div>
+      </div>
+
+      <div className="cc-section">
+        <h4>Technical & Momentum</h4>
+        <div className="cc-metric-row">
+          <span>Trend / Signal</span>
+          <span className="cc-val">{td?.trend ?? '—'} / {td?.signal ?? '—'}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span>RSI</span>
+          <span className={`cc-val ${isBestRSI ? 'best-metric' : ''}`}>{formatVal(td?.indicators?.RSI)}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span title="Highlighted if closest to 52W High">52W High</span>
+          <span className={`cc-val ${isBest52H ? 'best-metric' : ''}`}>{formatVal(fd?.['52WeekHigh'], 'curr', currency)}</span>
+        </div>
+        <div className="cc-metric-row">
+          <span title="Highlighted if furthest from 52W Low">52W Low</span>
+          <span className={`cc-val ${isBest52L ? 'best-metric' : ''}`}>{formatVal(fd?.['52WeekLow'], 'curr', currency)}</span>
+        </div>
+      </div>
+
+      <div className="cc-section">
+        <h4>Sentiment</h4>
+        <div className="cc-metric-row">
+          <span>Sentiment</span>
+          <span className="cc-val">
+            {ov.sentimentScore != null ? (ov.sentimentScore >= 55 ? 'Positive' : ov.sentimentScore <= 45 ? 'Negative' : 'Neutral') : '—'}
+          </span>
+        </div>
+        <div className="cc-metric-row">
+          <span>Articles Analyzed</span>
+          <span className="cc-val">{sd?.data?.count ?? 0}</span>
+        </div>
+      </div>
+
+      <button className="cc-view-btn" onClick={onView}>View Full Analysis</button>
+    </div>
+  )
+}
+
 function ComparePage() {
   const [tickers, setTickers] = useState<string[]>(() => {
     try {
@@ -802,6 +1090,8 @@ function ComparePage() {
     return null
   }, [results])
 
+  const bestMetrics = useMemo(() => getBestMetrics(results, orderedTickers), [results, orderedTickers])
+
   return (
     <section className="compare-page">
       <div className="compare-header reveal">
@@ -875,157 +1165,21 @@ function ComparePage() {
       )}
 
       {results && !isLoading && orderedTickers.length > 0 && (
-        <div className="compare-results reveal">
-          <div className="compare-table-wrapper">
-            <table className="compare-table">
-              <thead>
-                <tr>
-                  <th className="compare-metric-col">Metric</th>
-                  {orderedTickers.map((t) => (
-                    <th key={t} className="compare-ticker-col">{t}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <CompareRow label="Company" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  const err = getError(t)
-                  if (err) return <span className="compare-error-cell" title={err}>Error</span>
-                  return r?.fundamental?.data?.shortName ?? r?.fundamental?.data?.longName ?? t
-                }} />
-                <CompareRow label="Price" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  if (!r) return '—'
-                  const price = r.fundamental?.data?.currentPrice ?? r.technical?.indicators?.close
-                  const currency = r.fundamental?.data?.currency ?? r.technical?.currency ?? 'USD'
-                  return price != null ? formatCurrency(price, currency) : '—'
-                }} />
-                <CompareRow label="Overall Score" tickers={orderedTickers} className="compare-score-row" render={(t) => {
-                  const r = getResult(t)
-                  if (!r) return '—'
-                  return <span className={`compare-score tone-${toneFromVerdict(r.overview.verdict)}`}>{r.overview.overallScore.toFixed(1)}</span>
-                }} />
-                <CompareRow label="Verdict" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  if (!r) return '—'
-                  return <span className={`verdict ${toneFromVerdict(r.overview.verdict)}`}>{r.overview.verdict}</span>
-                }} />
-                <CompareRow label="Fundamental" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  return r?.overview.fundamentalScore != null ? r.overview.fundamentalScore.toFixed(1) : '—'
-                }} />
-                <CompareRow label="Technical" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  return r?.overview.technicalScore != null ? r.overview.technicalScore.toFixed(1) : '—'
-                }} />
-                <CompareRow label="Sentiment" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  return r?.overview.sentimentScore != null ? r.overview.sentimentScore.toFixed(1) : '—'
-                }} />
-                <CompareRow label="Market Cap" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  const mc = r?.fundamental?.data?.marketCap
-                  return mc != null ? compactFormatter.format(mc) : '—'
-                }} />
-                <CompareRow label="P/E (Trailing)" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  const pe = r?.fundamental?.data?.trailingPE
-                  return pe != null ? pe.toFixed(2) : '—'
-                }} />
-                <CompareRow label="ROE" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  const roe = r?.fundamental?.data?.returnOnEquity
-                  return roe != null ? `${(roe * 100).toFixed(1)}%` : '—'
-                }} />
-                <CompareRow label="Debt/Equity" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  const de = r?.fundamental?.data?.debtToEquity
-                  return de != null ? de.toFixed(2) : '—'
-                }} />
-                <CompareRow label="Trend" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  return r?.technical?.trend ?? '—'
-                }} />
-                <CompareRow label="Signal" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  return r?.technical?.signal ?? '—'
-                }} />
-                <CompareRow label="Sector P/E (vs Sector)" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  const spa = r?.fundamental?.data?.sectorPeersAnalysis
-                  if (!spa) return '—'
-                  const stockPE = spa.trailing.rawValue
-                  const sectorMean = spa.trailing.sectorMean
-                  if (stockPE == null && sectorMean == null) return '—'
-                  const stockStr = stockPE != null ? stockPE.toFixed(1) + 'x' : 'N/A'
-                  const meanStr = sectorMean != null ? sectorMean.toFixed(1) + 'x avg' : ''
-                  return <span style={{ fontSize: '0.85rem' }}>{stockStr}{meanStr ? <span style={{ color: 'var(--muted)', marginLeft: '0.3rem' }}>vs {meanStr}</span> : null}</span>
-                }} />
-                <CompareRow label="Valuation" tickers={orderedTickers} render={(t) => {
-                  const r = getResult(t)
-                  const spa = r?.fundamental?.data?.sectorPeersAnalysis
-                  if (!spa) return '—'
-                  const label = spa.trailing.relativeStandingLabel
-                  if (!label) return '—'
-                  const lc = label.toLowerCase()
-                  const color = lc.includes('under') ? '#10b981' : lc.includes('over') ? '#ef4444' : 'var(--muted)'
-                  const bg = lc.includes('under') ? 'rgba(16,185,129,0.12)' : lc.includes('over') ? 'rgba(239,68,68,0.12)' : 'rgba(0,0,0,0.06)'
-                  return (
-                    <span style={{
-                      display: 'inline-block',
-                      padding: '0.2rem 0.55rem',
-                      borderRadius: '5px',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      color,
-                      backgroundColor: bg,
-                      border: `1px solid ${color}`,
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {label}
-                    </span>
-                  )
-                }} />
-                <tr className="compare-action-row">
-                  <td className="compare-metric-col"></td>
-                  {orderedTickers.map((t) => (
-                    <td key={t}>
-                      {getResult(t) ? (
-                        <button
-                          type="button"
-                          className="compare-view-btn"
-                          onClick={() => navigate(`/stock/${encodeURIComponent(t)}/overview`)}
-                        >
-                          View Full Analysis
-                        </button>
-                      ) : (
-                        <span className="compare-error-cell">{getError(t) ?? 'N/A'}</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
+        <div className="compare-results-cards reveal">
+          {orderedTickers.map(t => (
+            <CompareCard 
+              key={t}
+              ticker={t}
+              result={getResult(t)}
+              error={getError(t)}
+              bestMetrics={bestMetrics}
+              onRemove={() => removeTicker(t)}
+              onView={() => navigate(`/stock/${encodeURIComponent(t)}/overview`)}
+            />
+          ))}
         </div>
       )}
     </section>
-  )
-}
-
-function CompareRow({ label, tickers, render, className }: {
-  label: string
-  tickers: string[]
-  render: (ticker: string) => React.ReactNode
-  className?: string
-}) {
-  return (
-    <tr className={className}>
-      <td className="compare-metric-col">{label}</td>
-      {tickers.map((t) => (
-        <td key={t}>{render(t)}</td>
-      ))}
-    </tr>
   )
 }
 

@@ -7195,3 +7195,216 @@ html.dark .hp-pillars-section {
   font-size: 0.75rem !important;
   color: color-mix(in srgb, var(--muted) 60%, transparent) !important;
 }
+
+/* --- Card-Based Comparison Page Layout --- */
+.compare-results-cards {
+  display: flex;
+  gap: 1.5rem;
+  overflow-x: auto;
+  padding: 1rem 0 2rem;
+  scroll-snap-type: x mandatory;
+}
+
+.compare-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  min-width: 360px;
+  flex: 1 1 360px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+  scroll-snap-align: start;
+  overflow: hidden;
+  position: relative;
+}
+
+.compare-card.error-card {
+  justify-content: center;
+  align-items: center;
+  padding: 3rem 2rem;
+  text-align: center;
+  border-style: dashed;
+}
+
+.cc-header {
+  padding: 1.5rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 40%, var(--bg));
+}
+
+.cc-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.cc-title h3 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin: 0;
+  color: var(--ink);
+}
+
+.cc-name {
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  display: block;
+}
+
+.cc-remove {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 200ms;
+}
+
+.cc-remove:hover {
+  color: var(--soft-coral);
+}
+
+.cc-price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+
+.cc-price {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cc-score {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.cc-verdict {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 0.3rem 0.6rem;
+  border-radius: 99px;
+  letter-spacing: 0.05em;
+  background: var(--line);
+}
+
+.cc-verdict.tone-positive {
+  background: rgba(34, 197, 94, 0.15);
+  color: #10b981;
+}
+
+.cc-verdict.tone-negative {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.cc-verdict.tone-neutral {
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+}
+
+.cc-sparkline-container {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  background: color-mix(in srgb, var(--bg) 50%, var(--card));
+}
+
+.cc-spark-label {
+  position: absolute;
+  top: 0.5rem;
+  left: 1.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cc-section {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.cc-section h4 {
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
+
+.cc-metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0;
+  font-size: 0.95rem;
+}
+
+.cc-metric-row span:first-child {
+  color: var(--ink-secondary, var(--muted));
+}
+
+.cc-val {
+  font-weight: 600;
+  color: var(--ink);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.best-metric {
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d; /* Darker green for light mode */
+}
+
+html.dark .best-metric {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80; /* Lighter green for dark mode */
+}
+
+.cc-view-btn {
+  margin: 1.5rem;
+  padding: 0.75rem;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 200ms;
+}
+
+.cc-view-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+html.dark .cc-view-btn {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+html.dark .cc-view-btn:hover {
+  background: var(--accent);
+  color: white;
+}
