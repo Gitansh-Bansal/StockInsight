@@ -25,10 +25,17 @@
   --chart-teal: #0d9488;
   --chart-rose: #e11d48;
   --chart-slate: #94a3b8;
+  
+  /* Semantic Financial Colors */
+  --color-bullish: #10b981;
+  --color-bearish: #ef4444;
+  --color-caution: #f59e0b;
+  --color-neutral: #64748b;
+
   --mono-font: 'IBM Plex Mono', 'Consolas', monospace;
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
-  line-height: 1.5;
-  font-weight: 450;
+  line-height: 1.6;
+  font-weight: 400;
   color: var(--ink);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -60,6 +67,12 @@ html.dark {
   --chart-teal: #2dd4bf;
   --chart-rose: #fb7185;
   --chart-slate: #94a3b8;
+  
+  /* Semantic Financial Colors (Dark Mode) */
+  --color-bullish: #10b981;
+  --color-bearish: #ef4444;
+  --color-caution: #fbbf24;
+  --color-neutral: #94a3b8;
 }
 
 *,

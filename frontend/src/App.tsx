@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend,
   AreaChart, Area,
   PieChart, Pie, Cell,
   LineChart, Line
@@ -2046,6 +2046,47 @@ function StackedBarBurn({ labelA, labelB, valA, valB, colorA, colorB }: { labelA
 
 const PIE_COLORS = ['#2563eb', '#10b981', '#cbd5e1']
 
+function RechartsSizedContainer({
+  height,
+  children,
+}: {
+  height: number
+  children: (size: { width: number; height: number }) => ReactNode
+}) {
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  const [width, setWidth] = useState(0)
+
+  useEffect(() => {
+    const node = hostRef.current
+    if (!node) {
+      return
+    }
+
+    const measure = () => {
+      const measured = Math.max(0, Math.floor(node.getBoundingClientRect().width))
+      setWidth(measured)
+    }
+
+    measure()
+
+    if (typeof ResizeObserver === 'undefined') {
+      const onResize = () => measure()
+      window.addEventListener('resize', onResize)
+      return () => window.removeEventListener('resize', onResize)
+    }
+
+    const observer = new ResizeObserver(() => measure())
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div ref={hostRef} style={{ width: '100%', height: `${height}px` }}>
+      {width > 0 ? children({ width, height }) : null}
+    </div>
+  )
+}
+
 function FundamentalSection({
   result,
   llmSummary,
@@ -2090,6 +2131,26 @@ function FundamentalSection({
           : result.score < 70 ? 'Good'
             : 'Strong'
     : 'N/A'
+  const chartBlue = resolveCssColorValue('var(--chart-blue)', '#2563eb')
+  const chartGreen = resolveCssColorValue('var(--chart-green)', '#10b981')
+  const chartSlate = resolveCssColorValue('var(--chart-slate)', '#94a3b8')
+  const axisTickColor = resolveCssColorValue('var(--muted)', '#6b7280')
+  const gridStrokeColor = resolveCssColorValue('var(--line)', '#e5e7eb')
+  const revenueTrendData = (data.revenueTrend ?? []).map((row) => ({
+    year: String(row.year),
+    revenue: toFiniteOrNull(row.revenue),
+    netProfit: toFiniteOrNull(row.netProfit),
+  }))
+  const cashflowTrendData = (data.cashflowTrend ?? []).map((row) => ({
+    year: String(row.year),
+    operatingCashFlow: toFiniteOrNull(row.operatingCashFlow),
+    freeCashFlow: toFiniteOrNull(row.freeCashFlow),
+  }))
+  const marginsTrendData = (data.marginsTrend ?? []).map((row) => ({
+    year: String(row.year),
+    operatingMargin: toFiniteOrNull(row.operatingMargin),
+    netMargin: toFiniteOrNull(row.netMargin),
+  }))
 
   return (
     <article className={`panel reveal theme-${theme}`}>
@@ -2342,56 +2403,56 @@ function FundamentalSection({
       </div>
 
       <div className="charts-grid">
-        {data.revenueTrend && data.revenueTrend.length > 0 && (
+        {revenueTrendData.length > 0 && (
           <div className={`chart-card${isRevInView ? ' is-animated' : ''}`} ref={revRef}>
             <h3>Revenue & Net Profit</h3>
             <div className="recharts-wrapper">
-              <ResponsiveContainer width="100%" height={250}>
-                {isRevInView ? (
-                  <BarChart data={data.revenueTrend}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                    <XAxis dataKey="year" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} width={60} />
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                    <Bar dataKey="revenue" name="Revenue" fill="var(--chart-slate)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="netProfit" name="Net Profit" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
+              <RechartsSizedContainer height={250}>
+                {({ width, height }) => (
+                  <BarChart width={width} height={height} data={revenueTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridStrokeColor} />
+                  <XAxis dataKey="year" tick={{ fill: axisTickColor, fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{ fill: axisTickColor, fontSize: 12 }} axisLine={false} tickLine={false} width={60} />
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Bar dataKey="revenue" name="Revenue" fill={chartSlate} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="netProfit" name="Net Profit" fill={chartBlue} radius={[4, 4, 0, 0]} />
                   </BarChart>
-                ) : <div style={{ height: '100%' }} />}
-              </ResponsiveContainer>
+                )}
+              </RechartsSizedContainer>
             </div>
           </div>
         )}
 
-        {data.cashflowTrend && data.cashflowTrend.length > 0 && (
+        {cashflowTrendData.length > 0 && (
           <div className={`chart-card${isCashInView ? ' is-animated' : ''}`} ref={cashRef}>
             <h3>Cash Flow Breakdown</h3>
             <div className="recharts-wrapper">
-              <ResponsiveContainer width="100%" height={250}>
-                {isCashInView ? (
-                  <AreaChart data={data.cashflowTrend}>
-                    <defs>
-                      <linearGradient id="colorOp" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--chart-blue)" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="var(--chart-blue)" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="colorFcf" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--chart-green)" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="var(--chart-green)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                    <XAxis dataKey="year" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} width={60} />
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                    <Area type="monotone" dataKey="operatingCashFlow" name="Op Cash Flow" stroke="var(--chart-blue)" fillOpacity={1} fill="url(#colorOp)" stackId="1" />
-                    <Area type="monotone" dataKey="freeCashFlow" name="Free Cash Flow" stroke="var(--chart-green)" fillOpacity={1} fill="url(#colorFcf)" stackId="1" />
+              <RechartsSizedContainer height={250}>
+                {({ width, height }) => (
+                  <AreaChart width={width} height={height} data={cashflowTrendData}>
+                  <defs>
+                    <linearGradient id="colorOp" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={chartBlue} stopOpacity={0.8} />
+                      <stop offset="95%" stopColor={chartBlue} stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorFcf" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={chartGreen} stopOpacity={0.8} />
+                      <stop offset="95%" stopColor={chartGreen} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridStrokeColor} />
+                  <XAxis dataKey="year" tick={{ fill: axisTickColor, fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{ fill: axisTickColor, fontSize: 12 }} axisLine={false} tickLine={false} width={60} />
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Area type="monotone" dataKey="operatingCashFlow" name="Op Cash Flow" stroke={chartBlue} fillOpacity={1} fill="url(#colorOp)" stackId="1" />
+                  <Area type="monotone" dataKey="freeCashFlow" name="Free Cash Flow" stroke={chartGreen} fillOpacity={1} fill="url(#colorFcf)" stackId="1" />
                   </AreaChart>
-                ) : <div style={{ height: '100%' }} />}
-              </ResponsiveContainer>
+                )}
+              </RechartsSizedContainer>
             </div>
           </div>
         )}
@@ -2408,15 +2469,15 @@ function FundamentalSection({
             <div className={`chart-card${isShareInView ? ' is-animated' : ''}`} ref={shareRef}>
               <h3>Shareholding Pattern</h3>
               <div className="recharts-wrapper">
-                <ResponsiveContainer width="100%" height={250}>
-                  {isShareInView ? (
-                    <PieChart>
+                <RechartsSizedContainer height={250}>
+                  {({ width, height }) => (
+                    <PieChart width={width} height={height}>
                       <Pie
                         data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
+                        cx={width / 2}
+                        cy={height / 2}
+                        innerRadius={Math.min(width, height) * 0.24}
+                        outerRadius={Math.min(width, height) * 0.32}
                         paddingAngle={5}
                         dataKey="value"
                         stroke="none"
@@ -2429,31 +2490,31 @@ function FundamentalSection({
                       <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(1)}%`} />
                       <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                     </PieChart>
-                  ) : <div style={{ height: '100%' }} />}
-                </ResponsiveContainer>
+                  )}
+                </RechartsSizedContainer>
               </div>
             </div>
           )
         })()}
 
-        {data.marginsTrend && data.marginsTrend.length > 0 && (
+        {marginsTrendData.length > 0 && (
           <div className={`chart-card${isMarginInView ? ' is-animated' : ''}`} ref={marginRef}>
             <h3>Margins History</h3>
             <div className="recharts-wrapper">
-              <ResponsiveContainer width="100%" height={250}>
-                {isMarginInView ? (
-                  <LineChart data={data.marginsTrend}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                    <XAxis dataKey="year" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={(val) => `${(val * 100).toFixed(0)}%`} tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} width={45} />
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(2)}%`} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                    <Line type="monotone" dataKey="operatingMargin" name="Operating Margin" stroke="var(--chart-blue)" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
-                    <Line type="monotone" dataKey="netMargin" name="Net Margin" stroke="var(--chart-green)" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
+              <RechartsSizedContainer height={250}>
+                {({ width, height }) => (
+                  <LineChart width={width} height={height} data={marginsTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridStrokeColor} />
+                  <XAxis dataKey="year" tick={{ fill: axisTickColor, fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={(val) => `${(val * 100).toFixed(0)}%`} tick={{ fill: axisTickColor, fontSize: 12 }} axisLine={false} tickLine={false} width={45} />
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(2)}%`} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Line type="monotone" dataKey="operatingMargin" name="Operating Margin" stroke={chartBlue} strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="netMargin" name="Net Margin" stroke={chartGreen} strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
                   </LineChart>
-                ) : <div style={{ height: '100%' }} />}
-              </ResponsiveContainer>
+                )}
+              </RechartsSizedContainer>
             </div>
           </div>
         )}
@@ -3645,6 +3706,46 @@ function SnapshotMetricTile({
   )
 }
 
+function resolveCssColorValue(value: string, fallback: string): string {
+  const raw = value.trim()
+  if (!raw) {
+    return fallback
+  }
+  if (!raw.startsWith('var(')) {
+    return raw
+  }
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return fallback
+  }
+
+  const match = raw.match(/^var\((--[^,\s)]+)(?:,\s*([^)]+))?\)$/)
+  if (!match) {
+    return fallback
+  }
+
+  const cssVarName = match[1]
+  const fallbackFromVar = match[2]?.trim()
+  const resolved = getComputedStyle(document.documentElement)
+    .getPropertyValue(cssVarName)
+    .trim()
+
+  if (resolved) {
+    return resolved
+  }
+  if (fallbackFromVar) {
+    return fallbackFromVar
+  }
+  return fallback
+}
+
+function toFiniteOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  const numeric = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
 function IndicatorMiniSparkline({
   chart,
   isAnimated,
@@ -3653,101 +3754,74 @@ function IndicatorMiniSparkline({
   isAnimated: boolean
 }) {
   const gradientId = `indicator-mini-gradient-${chart.key}`
+  const resolvedStroke = resolveCssColorValue(chart.stroke, '#2563eb')
+  const series = chart.series.filter((point) => isFiniteNumber(point.value))
+  if (series.length === 0) {
+    return <div className="indicator-mini-empty">No data</div>
+  }
+
+  const width = 320
+  const height = 96
+  const inset = 8
+  const baselineY = height - inset
+  const minValue = Math.min(...series.map((point) => point.value))
+  const maxValue = Math.max(...series.map((point) => point.value))
+  const valueRange = maxValue - minValue || 1
+  const xRange = Math.max(1, series.length - 1)
+  const points = series.map((point, index) => {
+    const x = inset + (index / xRange) * (width - inset * 2)
+    const y =
+      baselineY - ((point.value - minValue) / valueRange) * (height - inset * 2)
+    return { x, y }
+  })
+
+  const linePath = points
+    .map((point, index) =>
+      `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`,
+    )
+    .join(' ')
+  const firstPoint = points[0]
+  const lastPoint = points[points.length - 1]
+  const areaPath = `${linePath} L ${lastPoint.x.toFixed(2)} ${baselineY.toFixed(2)} L ${firstPoint.x.toFixed(2)} ${baselineY.toFixed(2)} Z`
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart key={isAnimated ? 'active' : 'idle'} data={chart.series} margin={{ top: 8, right: 2, left: 2, bottom: 6 }}>
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={chart.stroke} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={chart.stroke} stopOpacity={0.03} />
-          </linearGradient>
-        </defs>
-        <XAxis hide dataKey="index" />
-        <YAxis hide domain={['auto', 'auto']} />
-        <RechartsTooltip
-          cursor={{ stroke: chart.stroke, strokeOpacity: 0.28, strokeWidth: 1 }}
-          content={<IndicatorMiniTooltip chart={chart} />}
-        />
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke={chart.stroke}
-          strokeWidth={2}
-          fill={`url(#${gradientId})`}
-          isAnimationActive={isAnimated}
-          animationDuration={1800}
-          animationEasing="ease-in-out"
-          dot={(dotProps) => (
-            <IndicatorMiniPoint dotProps={dotProps} stroke={chart.stroke} isAnimated={isAnimated} />
-          )}
-          activeDot={{
-            r: 4.2,
-            stroke: '#ffffff',
-            strokeWidth: 2,
-            fill: chart.stroke,
-          }}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  )
-}
-
-function IndicatorMiniPoint({
-  dotProps,
-  stroke,
-  isAnimated,
-}: {
-  dotProps: {
-    cx?: number
-    cy?: number
-    payload?: IndicatorMiniSeriesPoint
-  }
-  stroke: string
-  isAnimated: boolean
-}) {
-  const { cx, cy, payload } = dotProps
-  if (!isFiniteNumber(cx) || !isFiniteNumber(cy)) {
-    return null
-  }
-
-  return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={1.9}
-      fill={stroke}
-      className={`indicator-mini-point${isAnimated ? ' is-animated' : ''}`}
-      style={isAnimated ? { animationDelay: `${80 + (payload?.index ?? 0) * 22}ms` } : undefined}
-    />
-  )
-}
-
-function IndicatorMiniTooltip({
-  active,
-  payload,
-  chart,
-}: {
-  active?: boolean
-  payload?: Array<{ payload: IndicatorMiniSeriesPoint; value: number }>
-  chart: IndicatorMiniChart
-}) {
-  if (!active || !payload || payload.length === 0) {
-    return null
-  }
-
-  const point = payload[0]?.payload
-  if (!point) {
-    return null
-  }
-
-  return (
-    <div className="indicator-mini-tooltip">
-      <p className="indicator-mini-tooltip-time">{point.timestampLabel}</p>
-      <p className="indicator-mini-tooltip-value">
-        {formatMiniTooltipValue(chart.key, point.value)}
-      </p>
-    </div>
+    <svg
+      width="100%"
+      height="100%"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-label={`${chart.title} trend chart`}
+      role="img"
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={resolvedStroke} stopOpacity={0.35} />
+          <stop offset="100%" stopColor={resolvedStroke} stopOpacity={0.03} />
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill={`url(#${gradientId})`} />
+      <path
+        d={linePath}
+        fill="none"
+        stroke={resolvedStroke}
+        strokeWidth={2.1}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={
+          isAnimated
+            ? { opacity: 1, transformOrigin: 'center', transition: 'opacity 420ms ease' }
+            : { opacity: 1 }
+        }
+      />
+      <circle
+        cx={lastPoint.x}
+        cy={lastPoint.y}
+        r={2.9}
+        fill={resolvedStroke}
+        stroke="#ffffff"
+        strokeWidth={1.4}
+      />
+    </svg>
   )
 }
 
@@ -5386,6 +5460,13 @@ function useInViewOnce<T extends Element>(
       return
     }
 
+    if (typeof IntersectionObserver === 'undefined') {
+      const frame = requestAnimationFrame(() => {
+        setIsVisible(true)
+      })
+      return () => cancelAnimationFrame(frame)
+    }
+
     const observer = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
@@ -5737,23 +5818,14 @@ function pickResistanceLevels(
   currentPrice: number | null,
 ): [number | null, number | null] {
   const preferred =
-    currentPrice !== null ? levels.filter((level) => level >= currentPrice) : levels
-  const selected: number[] = preferred.slice(0, 2)
+    currentPrice !== null ? levels.filter((level) => level > currentPrice) : levels
+  const selected: (number | null)[] = preferred.slice(0, 2)
 
-  if (selected.length < 2) {
-    for (const level of levels) {
-      if (selected.includes(level)) {
-        continue
-      }
-      selected.push(level)
-      if (selected.length === 2) {
-        break
-      }
-    }
+  while (selected.length < 2) {
+    selected.push(null)
   }
 
-  selected.sort((a, b) => a - b)
-  return [selected[0] ?? null, selected[1] ?? null]
+  return [selected[0], selected[1]]
 }
 
 function pickSupportLevels(
@@ -5763,24 +5835,15 @@ function pickSupportLevels(
   const descending = [...levels].sort((a, b) => b - a)
   const preferred =
     currentPrice !== null
-      ? descending.filter((level) => level <= currentPrice)
+      ? descending.filter((level) => level < currentPrice)
       : descending
-  const selected: number[] = preferred.slice(0, 2)
+  const selected: (number | null)[] = preferred.slice(0, 2)
 
-  if (selected.length < 2) {
-    for (const level of descending) {
-      if (selected.includes(level)) {
-        continue
-      }
-      selected.push(level)
-      if (selected.length === 2) {
-        break
-      }
-    }
+  while (selected.length < 2) {
+    selected.push(null)
   }
 
-  selected.sort((a, b) => b - a)
-  return [selected[0] ?? null, selected[1] ?? null]
+  return [selected[0], selected[1]]
 }
 
 function levelDistanceLabel(
@@ -6256,22 +6319,6 @@ function formatMiniIndicatorValue(
     return formatSignedNumber(Number(value.toFixed(2)))
   }
   return value.toFixed(1)
-}
-
-function formatMiniTooltipValue(
-  key: IndicatorMiniChart['key'],
-  value: number,
-): string {
-  if (key === 'volume') {
-    return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
-  }
-  if (key === 'macd-hist') {
-    return formatSignedNumber(Number(value.toFixed(4)))
-  }
-  return value.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
 }
 
 function buildIndicatorMiniCharts(ohlcv: OhlcvPoint[]): IndicatorMiniChart[] {

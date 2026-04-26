@@ -7243,6 +7243,8 @@ html.dark .hp-pillars-section {
   color: color-mix(in srgb, var(--muted) 60%, transparent) !important;
 }
 
+
+
 /* --- Card-Based Comparison Page Layout --- */
 .compare-results-cards {
   display: flex;
@@ -7455,3 +7457,111 @@ html.dark .cc-view-btn:hover {
   background: var(--accent);
   color: white;
 }
+
+
+/* ==========================================================================
+   Premium Refinements & Utilities
+   ========================================================================== */
+
+/* Numeric Formatting */
+.numeric-value,
+.price-display,
+.value-nowrap,
+.ticker-current-price,
+.chart-live-price,
+.hp-snapshot-price,
+.overview-score-value,
+.technical-score-value,
+.snapshot-tile-value,
+.indicator-mini-tooltip-value,
+.full-report-score-value {
+  white-space: nowrap;
+}
+
+/* Overhaul chart heights for primary dashboard charts only */
+.chart-card .recharts-wrapper {
+  min-height: 350px !important;
+  width: 100% !important;
+}
+
+/* Keep indicator mini charts at their compact card height */
+.indicator-mini-body .recharts-wrapper,
+.indicator-mini-body .recharts-responsive-container {
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+/* Compact Modern Score Indicators */
+.technical-score-meter-segments {
+  height: 6px !important;
+  border-radius: 3px !important;
+}
+
+.technical-score-meter-marker {
+  height: 14px !important;
+  width: 4px !important;
+  top: -4px !important;
+  border-radius: 2px !important;
+}
+
+.technical-score-meter-scale {
+  display: none !important;
+}
+
+.technical-score-meter-wrap {
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+}
+
+/* Print Styles for Presentation Quality */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  html.dark body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .top-bar,
+  .footer-wrapper,
+  button,
+  .hero-search,
+  .auth-tabs {
+    display: none !important;
+  }
+
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  .app-shell {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .full-report-main-grid,
+  .technical-layout,
+  .overview-chart-layout {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .card,
+  [class*="panel"],
+  [class*="container"] {
+    page-break-inside: avoid;
+    border: 1px solid #ccc !important;
+    background: #ffffff !important;
+  }
+
+  /* Make sure charts print */
+  .recharts-wrapper {
+    page-break-inside: avoid;
+  }
+}
+

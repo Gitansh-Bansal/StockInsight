@@ -251,8 +251,21 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         ]
     )
 
-    support_values = _safe_list_numbers(structure.get("support"))[:3]
-    resistance_values = _safe_list_numbers(structure.get("resistance"))[:3]
+    # Sort resistance descending (highest first), support ascending (lowest first)
+    # Filter: resistance should be above current price, support below
+    all_support = sorted(_safe_list_numbers(structure.get("support")), reverse=False)
+    all_resistance = sorted(_safe_list_numbers(structure.get("resistance")), reverse=True)
+    if current_price is not None:
+        support_values = [v for v in all_support if v < current_price][:3]
+        resistance_values = [v for v in all_resistance if v > current_price][:3]
+        # Fallback: if filtering removes everything, use raw values
+        if not support_values:
+            support_values = all_support[:3]
+        if not resistance_values:
+            resistance_values = all_resistance[:3]
+    else:
+        support_values = all_support[:3]
+        resistance_values = all_resistance[:3]
     support_resistance_rows_html = _build_support_resistance_rows(
         support_values=support_values,
         resistance_values=resistance_values,
@@ -276,18 +289,41 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         technical_reasons = []
     if not technical_reasons:
         technical_reasons = [
-            "Watch trend direction and moving average alignment.",
-            "Monitor momentum divergence in RSI and MACD.",
+            "Monitor trend direction and moving average crossovers for entry/exit signals.",
+            "Watch RSI levels — above 70 signals overbought; below 30 signals oversold.",
+            "MACD histogram direction indicates short-term momentum shifts.",
+            "ADX above 25 confirms a strong trend; below 20 suggests consolidation.",
+            "Volume confirmation is critical — price moves on low volume are less reliable.",
+            "Support and resistance levels define key risk/reward zones for position sizing.",
         ]
     signals_html = "".join(
         f"<li>{escape(str(item))}</li>" for item in technical_reasons[:6]
     )
 
-    headline_rows_html = _build_headline_feed_rows(headlines)
+    headline_rows_html = _build_headline_feed_rows(headlines, max_items=16)
     verdict_text = _safe_text(overview.get("verdict"))
     price_label = _format_currency_symbol(current_price, currency)
     market_cap_label = _format_large_number_symbol(fundamental.get("marketCap"), currency)
     target_price_label = _format_currency_symbol(fundamental.get("targetMeanPrice"), currency)
+    latest_revenue_label = _format_large_number_symbol(
+        _latest_trend_value(fundamental.get("revenueTrend"), "revenue"),
+        currency,
+    )
+    latest_profit_label = _format_large_number_symbol(
+        _latest_trend_value(fundamental.get("revenueTrend"), "netProfit"),
+        currency,
+    )
+
+    # Price trend chart for Page 3
+    tech_data = technical_result.get("data") or {}
+    ohlcv_for_chart = tech_data.get("ohlcv") or ohlcv
+    price_chart_svg = _build_technical_price_chart_svg(ohlcv_for_chart)
+
+    # Sentiment percentages
+    total_sent = max(1, sentiment_counts["positive"] + sentiment_counts["neutral"] + sentiment_counts["negative"])
+    sent_pos_pct = f"{sentiment_counts['positive'] / total_sent * 100:.1f}%"
+    sent_neu_pct = f"{sentiment_counts['neutral'] / total_sent * 100:.1f}%"
+    sent_neg_pct = f"{sentiment_counts['negative'] / total_sent * 100:.1f}%"
 
     return f"""<!doctype html>
 <html lang="en">
@@ -297,32 +333,39 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
   <style>
     @page {{
       size: A4;
-      margin: 7mm 8mm;
-      background: #ffffff;
+      margin: 5mm 7mm;
+      background: #f8fafc;
     }}
 
     :root {{
-      --page-bg: #ffffff;
-      --panel-bg: #f4f9ff;
-      --panel-strong: #ffffff;
-      --panel-border: #c9dcf0;
-      --text-main: #172b42;
-      --text-muted: #5f738f;
-      --text-heading: #0f4c81;
-      --table-border: #d0e1f3;
-      --accent-green: #22c55e;
-      --accent-amber: #f59e0b;
-      --accent-red: #ef4444;
+      --page-bg: #f8fafc;
+      --panel-bg: #ffffff;
+      --panel-strong: #f8fbff;
+      --panel-border: #d8e2ee;
+      --text-main: #243447;
+      --text-muted: #64748b;
+      --text-heading: #111827;
+      --table-border: #e6edf5;
+      --accent-green: #059669;
+      --accent-amber: #b7791f;
+      --accent-red: #dc2626;
+      --accent-blue: #2563eb;
+      --accent-cyan: #0891b2;
+      --soft-blue: #eff6ff;
+      --soft-green: #ecfdf5;
+      --soft-amber: #fffbeb;
+      --soft-red: #fef2f2;
     }}
 
     html, body {{
       margin: 0;
       padding: 0;
       background: var(--page-bg);
-      color: #0f172a;
+      color: var(--text-heading);
       font-family: "Segoe UI", Arial, sans-serif;
-      font-size: 11px;
-      line-height: 1.34;
+      font-size: 14px;
+      line-height: 1.45;
+      letter-spacing: 0.1px;
     }}
 
     .page {{
@@ -334,138 +377,138 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
     }}
 
     .sheet {{
-      display: block;
+      display: flex;
+      flex-direction: column;
+      height: 287mm;
       box-sizing: border-box;
     }}
 
-    .sheet-main {{
+    /* ── Hero Header ── */
+    .hero-header {{
+      background: linear-gradient(135deg, #eef6ff 0%, #ffffff 68%);
+      border: 1px solid #cfe0f3;
+      border-radius: 8px;
+      padding: 14px 20px;
+      color: var(--text-heading);
+      margin-bottom: 10px;
+      display: table;
+      width: 100%;
       box-sizing: border-box;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     }}
 
-    .top-grid {{
-      display: grid;
-      grid-template-columns: 1.25fr 0.9fr 0.95fr 1.2fr 0.95fr;
-      gap: 8px;
-      margin-bottom: 8px;
-    }}
-
-    .hero-card {{
-      background: var(--panel-bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      padding: 11px 12px;
-      color: var(--text-main);
-      min-height: 68px;
-      box-sizing: border-box;
-      overflow: hidden;
+    .hero-header-left {{
+      display: table-cell;
+      vertical-align: middle;
+      text-align: left;
     }}
 
     .hero-company {{
       font-size: 22px;
-      font-weight: 700;
+      font-weight: 800;
       line-height: 1.1;
       margin: 0;
+      color: var(--text-heading);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }}
 
     .hero-exchange {{
-      margin-top: 7px;
+      margin-top: 4px;
       font-size: 12px;
-      color: var(--text-heading);
+      color: #5b6f8c;
       font-weight: 700;
-      letter-spacing: 0.2px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }}
+
+    .hero-header-right {{
+      display: table-cell;
+      vertical-align: middle;
+      text-align: right;
+      white-space: nowrap;
+    }}
+
+    .hero-k-item {{
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 24px;
+      text-align: right;
     }}
 
     .hero-k-label {{
-      margin: 4px 0 0;
-      color: var(--text-heading);
+      margin: 0;
+      color: #5b6f8c;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
     }}
 
     .hero-k-value {{
       margin: 2px 0 0;
-      font-size: 22px;
-      font-weight: 700;
-      overflow-wrap: anywhere;
-    }}
-
-    .score-down {{
-      margin-top: 2px;
-      color: var(--accent-red);
-      font-size: 12px;
-      font-weight: 700;
-    }}
-
-    .score-up {{
-      margin-top: 2px;
-      color: var(--accent-green);
-      font-size: 12px;
-      font-weight: 700;
-    }}
-
-    .score-block-title {{
-      margin: 2px 0 0;
-      color: var(--text-heading);
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }}
-
-    .score-block-value {{
-      margin: 3px 0 0;
-      font-size: 19px;
+      font-size: 18px;
       font-weight: 800;
-      color: {escape(_score_badge_bg(overview_score))};
+      color: var(--text-heading);
+      white-space: nowrap;
     }}
 
+    .score-down {{ margin-top: 2px; color: var(--accent-red); font-size: 13px; font-weight: 800; }}
+    .score-up {{ margin-top: 2px; color: var(--accent-green); font-size: 13px; font-weight: 800; }}
+
+    /* ── Panels ── */
     .panel {{
       background: var(--panel-bg);
       border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      padding: 10px 14px;
+      border-radius: 8px;
+      padding: 10px 14px 13px;
       color: var(--text-main);
       margin-bottom: 8px;
       box-sizing: border-box;
-      overflow: hidden;
-    }}
-
-    .panel h2, .panel h3 {{
-      margin: 0 0 6px 0;
-      color: var(--text-heading);
-      letter-spacing: 0.2px;
-      line-height: 1.2;
+      overflow: visible;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
     }}
 
     .panel h2 {{
-      font-size: 21px;
-      color: #0f172a;
+      margin: 0 0 4px 0;
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text-heading);
+      line-height: 1.1;
     }}
 
     .panel h3 {{
+      margin: 0 0 8px 0;
       font-size: 13px;
+      font-weight: 700;
       text-transform: uppercase;
-      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: var(--text-heading);
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--table-border);
     }}
 
     .summary-text {{
       margin: 0;
-      color: #334155;
-      font-size: 11px;
-      line-height: 1.32;
+      color: var(--text-main);
+      font-size: 13px;
+      line-height: 1.55;
     }}
 
     .muted {{
       color: var(--text-muted);
       font-style: italic;
+      font-size: 12px;
     }}
 
+    /* ── Page header row (pages 2-4) ── */
     .header-row {{
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-bottom: 8px;
+      margin-bottom: 0;
     }}
 
     .header-left {{
@@ -474,20 +517,23 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
 
     .header-sub {{
       margin-top: 2px;
-      color: #5f738f;
-      font-size: 11px;
+      color: var(--text-muted);
+      font-size: 12px;
       font-weight: 600;
     }}
 
     .badge {{
       display: inline-block;
       border-radius: 999px;
-      padding: 4px 12px;
+      padding: 5px 14px;
       font-weight: 800;
       color: #ffffff;
-      font-size: 11px;
+      font-size: 14px;
+      white-space: nowrap;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
     }}
 
+    /* ── Grid Layouts ── */
     .two-col {{
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -495,9 +541,9 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
       margin-bottom: 8px;
     }}
 
-    .two-col-wide-right {{
+    .two-col-chart-left {{
       display: grid;
-      grid-template-columns: 0.9fr 1.35fr;
+      grid-template-columns: 1.42fr 0.78fr;
       gap: 8px;
       margin-bottom: 8px;
     }}
@@ -505,15 +551,16 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
     .three-col {{
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 8px;
+      gap: 7px;
+      margin-bottom: 6px;
     }}
 
+    /* ── Charts ── */
     .chart-wrap {{
-      background: var(--panel-strong);
-      border: 1px solid var(--table-border);
-      border-radius: 10px;
-      padding: 6px;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
       overflow: hidden;
       box-sizing: border-box;
     }}
@@ -526,77 +573,142 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
       height: auto;
     }}
 
+    /* ── Tables ── */
     .panel-table {{
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      font-size: 9px;
-      margin-top: 2px;
-      background: #ffffff;
+      font-size: 12px;
+      margin-top: 4px;
+      background: transparent;
       max-width: 100%;
     }}
 
     .panel-table th,
     .panel-table td {{
-      border: 1px solid var(--table-border);
-      padding: 4px 6px;
-      color: #1f4b7a;
+      border: none;
+      border-bottom: 1px solid var(--table-border);
+      padding: 4.5px 4px;
       vertical-align: middle;
       word-break: break-word;
-      overflow-wrap: anywhere;
+      line-height: 1.22;
     }}
 
     .panel-table th {{
-      color: #0f172a;
+      color: var(--text-muted);
       text-align: left;
-      font-size: 8.5px;
-      background: #eef5fd;
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: transparent;
+      white-space: nowrap;
+      padding-bottom: 6px;
+    }}
+
+    .panel-table td:first-child {{
+      color: #315f9b;
+      font-weight: 500;
+      text-align: left;
     }}
 
     .panel-table td:last-child {{
-      color: #111827;
+      color: var(--text-heading);
       text-align: right;
       font-weight: 700;
+      white-space: nowrap;
     }}
 
+    .panel-table tbody tr:last-child td {{
+      border-bottom: none;
+    }}
+
+    .panel-table tbody tr:nth-child(odd) td {{
+      background: transparent;
+    }}
+
+    .panel-table tbody tr:nth-child(even) td {{
+      background: transparent;
+    }}
+
+    .metric-panel {{
+      overflow: hidden;
+    }}
+
+    .table-panel-compact {{
+      height: 52mm;
+    }}
+
+    .table-panel-tall {{
+      height: 54mm;
+    }}
+
+    .table-panel-xl {{
+      height: 60mm;
+    }}
+
+    .metric-panel .panel-table {{
+      font-size: 12px;
+      margin-top: 2px;
+    }}
+
+    .metric-panel .panel-table td {{
+      padding: 4.5px 4px;
+      line-height: 1.2;
+    }}
+
+    .metric-panel .panel-table td:first-child {{
+      font-size: 12px;
+    }}
+
+    .metric-panel .panel-table td:last-child {{
+      font-size: 12.5px;
+    }}
+
+    /* ── Chips (Growth / Price Snapshot) ── */
     .chip-grid {{
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 7px;
+      gap: 6px;
     }}
 
     .chip {{
       background: var(--panel-strong);
-      border: 1px solid var(--table-border);
-      border-radius: 9px;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
       padding: 7px 9px;
-      min-height: 48px;
+      min-height: 42px;
     }}
 
     .chip-label {{
       margin: 0;
-      color: var(--text-heading);
-      font-size: 8px;
+      color: var(--text-muted);
+      font-size: 10px;
       font-weight: 700;
       text-transform: uppercase;
+      letter-spacing: 0.4px;
     }}
 
     .chip-value {{
-      margin: 2px 0 0 0;
-      color: #0f172a;
-      font-size: 11px;
+      margin: 3px 0 0 0;
+      color: var(--text-heading);
+      font-size: 15px;
       font-weight: 800;
       line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }}
 
     .chip-note {{
       margin: 2px 0 0 0;
-      color: #5f738f;
-      font-size: 7px;
+      color: var(--text-muted);
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
     }}
 
+    /* ── Score Cards (compact bars replacing gauges) ── */
     .score-cards {{
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -605,67 +717,83 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
     }}
 
     .score-card {{
-      background: var(--panel-bg);
+      background: linear-gradient(to bottom, #ffffff, #f9fbff);
       border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      padding: 9px 8px;
+      border-radius: 8px;
+      padding: 10px 12px;
       text-align: center;
       box-sizing: border-box;
       overflow: hidden;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
     }}
 
     .score-title {{
       margin: 0 0 4px;
       color: var(--text-heading);
-      font-size: 8px;
+      font-size: 11px;
       font-weight: 800;
-      letter-spacing: 0.4px;
+      letter-spacing: 0.5px;
       text-transform: uppercase;
     }}
 
     .score-svg {{
       width: 100%;
-      height: 82px;
+      height: 76px;
       display: block;
     }}
 
+    /* ── Sentiment ── */
     .sentiment-counts {{
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
+      gap: 7px;
       margin-top: 2px;
     }}
 
     .sentiment-box {{
-      border-radius: 10px;
-      padding: 8px 8px 7px;
+      border-radius: 8px;
+      padding: 6px 6px 4px;
       text-align: center;
-      border: 1px solid #d9e3ef;
+      border: 1px solid #d8e2ee;
     }}
 
     .sentiment-box .num {{
       margin: 0;
-      font-size: 16px;
+      font-size: 22px;
       font-weight: 800;
       line-height: 1;
     }}
 
-    .sentiment-box .lbl {{
-      margin: 3px 0 0;
-      font-size: 8px;
+    .sentiment-box .pct {{
+      margin: 2px 0 0;
+      font-size: 12px;
       font-weight: 700;
-      letter-spacing: 0.3px;
-      text-transform: uppercase;
-      color: #46576f;
     }}
 
+    .sentiment-box .lbl {{
+      margin: 3px 0 0;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: #52677f;
+    }}
+
+    /* ── Headlines ── */
     .headline-list {{
-      background: #ffffff;
-      border: 1px solid var(--table-border);
-      border-radius: 10px;
-      padding: 4px 8px;
+      background: transparent;
+      border: none;
+      padding: 0;
       box-sizing: border-box;
       overflow: hidden;
+    }}
+
+    .sentiment-headline-panel {{
+      margin-bottom: 0;
+      max-height: 148mm;
+      overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }}
 
     .headline-row {{
@@ -674,83 +802,189 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
       align-items: center;
       gap: 6px;
       padding: 4px 0;
-      border-bottom: 1px solid #dbe7f5;
-      color: #1f2937;
-      font-size: 7px;
-      line-height: 1.25;
+      border-bottom: 1px solid var(--table-border);
+      color: var(--text-main);
+      font-size: 11px;
+      line-height: 1.3;
       overflow: hidden;
     }}
 
-    .headline-row:last-child {{
-      border-bottom: none;
+    .headline-title {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }}
 
     .dot {{
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       display: inline-block;
     }}
 
-    .dot-pos {{ background: #22c55e; }}
-    .dot-neg {{ background: #ef4444; }}
-    .dot-neu {{ background: #f59e0b; }}
+    .dot-pos {{ background: var(--accent-green); }}
+    .dot-neg {{ background: #dc2626; }}
+    .dot-neu {{ background: var(--accent-amber); }}
 
     .headline-source {{
-      color: #5f738f;
-      font-weight: 600;
+      color: var(--text-muted);
+      font-weight: 700;
       white-space: nowrap;
       margin-left: 8px;
+      font-size: 10px;
     }}
 
+    /* ── Bullet list ── */
     .bullet-list {{
       margin: 0;
       padding-left: 14px;
     }}
 
     .bullet-list li {{
-      margin: 2px 0;
-      color: #334155;
-      font-size: 8px;
-      line-height: 1.28;
+      margin: 3px 0;
+      color: var(--text-main);
+      font-size: 13px;
+      line-height: 1.45;
     }}
 
-    .text-good {{ color: #22c55e !important; }}
-    .text-bad {{ color: #ef4444 !important; }}
+    /* ── Score contribution bar chart ── */
+    .score-breakdown {{
+      margin-top: 4px;
+    }}
+
+    .score-row {{
+      display: grid;
+      grid-template-columns: 90px 1fr 36px;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }}
+
+    .score-row-label {{
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-heading);
+      white-space: nowrap;
+    }}
+
+    .score-row-track {{
+      background: #e2e8f0;
+      border-radius: 6px;
+      height: 10px;
+      overflow: hidden;
+    }}
+
+    .score-row-fill {{
+      height: 10px;
+      border-radius: 6px;
+    }}
+
+    .score-row-val {{
+      font-size: 12px;
+      font-weight: 800;
+      text-align: right;
+      white-space: nowrap;
+    }}
+
+    .snapshot-strip {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+    }}
+
+    .snapshot-card {{
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 8px 11px;
+      min-height: 60px;
+      background: linear-gradient(180deg, #ffffff 0%, #f4f8fc 100%);
+      box-sizing: border-box;
+    }}
+
+    .snapshot-label {{
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.45px;
+      text-transform: uppercase;
+    }}
+
+    .snapshot-value {{
+      margin: 4px 0 0;
+      color: var(--text-heading);
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+
+    /* ── Utility ── */
+    .text-good {{ color: var(--accent-green) !important; font-weight: 700; }}
+    .text-bad  {{ color: var(--accent-red)   !important; font-weight: 700; }}
+    .text-warn {{ color: var(--accent-amber) !important; font-weight: 700; }}
+
+    .sheet-main {{
+      flex: 1;
+      overflow: hidden;
+    }}
 
     .sheet-footer {{
-      margin-top: 6px;
-      color: #64748b;
-      font-size: 8px;
+      flex-shrink: 0;
+      margin-top: 4px;
+      color: #8a9bb3;
+      font-size: 10px;
       font-weight: 600;
+      text-align: right;
+      letter-spacing: 0.2px;
     }}
   </style>
 </head>
 <body>
-  <section class="page">
+  <section class="page page-cover">
     <div class="sheet">
       <div class="sheet-main">
-        <div class="top-grid">
-          <div class="hero-card">
-            <p class="hero-company">{escape(company_name)}<br/>({escape(ticker)})</p>
+        <div class="hero-header">
+          <div class="hero-header-left">
+            <p class="hero-company">{escape(company_name)} ({escape(ticker)})</p>
             <div class="hero-exchange">{escape(exchange_name)}</div>
           </div>
-          <div class="hero-card">
-            <p class="hero-k-value">{escape(price_label)}</p>
-            <p class="{price_change_class}">{escape(price_change_label)}</p>
+          <div class="hero-header-right">
+            <div class="hero-k-item">
+              <p class="hero-k-value">{escape(price_label)}</p>
+              <p class="{price_change_class}">{escape(price_change_label)}</p>
+            </div>
+            <div class="hero-k-item" style="padding-left:16px; border-left:1px solid #cbd9ea;">
+              <p class="hero-k-label">Overall Score</p>
+              <p class="hero-k-value" style="font-size: 20px; color:{escape(_score_badge_bg(overview_score))}">{escape(_format_short_score(overview_score))}<span style="font-size: 13px; color:#64748b; font-weight:500"> / 100</span></p>
+            </div>
+            <div class="hero-k-item" style="padding-left:16px; border-left:1px solid #cbd9ea;">
+              <p class="hero-k-label">ML Prediction: {escape(verdict_text)}</p>
+              <p class="hero-k-value" style="font-size: 20px; color:{escape(_score_badge_bg(predicted_score))}">{escape(_format_short_score(predicted_score))}<span style="font-size: 13px; color:#64748b; font-weight:500"> / 100</span></p>
+            </div>
           </div>
-          <div class="hero-card">
-            <p class="hero-k-label">Market Cap</p>
-            <p class="hero-k-value">{escape(market_cap_label)}</p>
+        </div>
+
+        <div class="snapshot-strip">
+          <div class="snapshot-card">
+            <p class="snapshot-label">Market Cap</p>
+            <p class="snapshot-value">{escape(market_cap_label)}</p>
           </div>
-          <div class="hero-card">
-            <p class="score-block-title">Overall &amp; Prediction</p>
-            <p class="hero-k-value" style="font-size:13px;">Score: {escape(_format_short_score(overview_score))}</p>
-            <p class="score-block-value">{escape(verdict_text)} (ML: {escape(_format_short_score(predicted_score))})</p>
+          <div class="snapshot-card">
+            <p class="snapshot-label">Target Price</p>
+            <p class="snapshot-value">{escape(target_price_label)}</p>
           </div>
-          <div class="hero-card">
-            <p class="hero-k-label">Target Price</p>
-            <p class="hero-k-value">{escape(target_price_label)}</p>
+          <div class="snapshot-card">
+            <p class="snapshot-label">Latest Revenue</p>
+            <p class="snapshot-value">{escape(latest_revenue_label)}</p>
+          </div>
+          <div class="snapshot-card">
+            <p class="snapshot-label">Latest Net Profit</p>
+            <p class="snapshot-value">{escape(latest_profit_label)}</p>
           </div>
         </div>
 
@@ -759,12 +993,12 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
           <p class="summary-text">{escape(overall_summary)}</p>
         </div>
 
-        <div class="two-col-wide-right">
+        <div class="two-col-chart-left">
           <div class="panel">
             <h3>Revenue &amp; Profit Trend</h3>
             <div class="chart-wrap">{revenue_chart_svg}</div>
           </div>
-          <div class="panel">
+          <div class="panel metric-panel">
             <h3>Key Performance Metrics</h3>
             <table class="panel-table">
               <tbody>
@@ -836,7 +1070,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         </div>
 
         <div class="two-col">
-          <div class="panel">
+          <div class="panel table-panel-compact">
             <h3>Profitability &amp; Returns</h3>
             <table class="panel-table">
               <tbody>
@@ -844,7 +1078,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
               </tbody>
             </table>
           </div>
-          <div class="panel">
+          <div class="panel table-panel-compact">
             <h3>Financial Health</h3>
             <table class="panel-table">
               <tbody>
@@ -862,7 +1096,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         </div>
 
         <div class="two-col">
-          <div class="panel">
+          <div class="panel table-panel-tall">
             <h3>Cash Flow Trend</h3>
             <table class="panel-table">
               <thead>
@@ -877,7 +1111,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
               </tbody>
             </table>
           </div>
-          <div class="panel">
+          <div class="panel table-panel-tall">
             <h3>Sector &amp; Profile</h3>
             <table class="panel-table">
               <tbody>
@@ -911,6 +1145,8 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
           </ul>
         </div>
 
+
+
         <div class="panel">
           <h3>Price Snapshot &amp; Regime</h3>
           <div class="chip-grid">
@@ -928,7 +1164,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         </div>
 
         <div class="two-col">
-          <div class="panel">
+          <div class="panel table-panel-compact">
             <h3>Momentum Indicators</h3>
             <table class="panel-table">
               <tbody>
@@ -936,7 +1172,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
               </tbody>
             </table>
           </div>
-          <div class="panel">
+          <div class="panel table-panel-xl">
             <h3>Support &amp; Resistance</h3>
             <table class="panel-table">
               <thead>
@@ -953,13 +1189,13 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         </div>
 
         <div class="two-col">
-          <div class="panel">
+          <div class="panel table-panel-xl">
             <h3>Key Technical Signals</h3>
             <ul class="bullet-list">
               {signals_html}
             </ul>
           </div>
-          <div class="panel">
+          <div class="panel table-panel-xl">
             <h3>Volume &amp; Structure Analysis</h3>
             <table class="panel-table">
               <tbody>
@@ -999,26 +1235,30 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         <div class="panel">
           <h3>News Sentiment Overview</h3>
           <div class="sentiment-counts">
-            <div class="sentiment-box" style="background:#dff4e2;">
-              <p class="num" style="color:#198f49;">{sentiment_counts["positive"]}</p>
+            <div class="sentiment-box" style="background:#ecfdf5;">
+              <p class="num" style="color:#047857;">{sentiment_counts["positive"]}</p>
+              <p class="pct" style="color:#047857;">{sent_pos_pct}</p>
               <p class="lbl">Positive</p>
             </div>
-            <div class="sentiment-box" style="background:#fbf4cb;">
-              <p class="num" style="color:#9a4c0f;">{sentiment_counts["neutral"]}</p>
+            <div class="sentiment-box" style="background:#fffbeb;">
+              <p class="num" style="color:#92400e;">{sentiment_counts["neutral"]}</p>
+              <p class="pct" style="color:#92400e;">{sent_neu_pct}</p>
               <p class="lbl">Neutral</p>
             </div>
-            <div class="sentiment-box" style="background:#fde2e2;">
+            <div class="sentiment-box" style="background:#fef2f2;">
               <p class="num" style="color:#dc2626;">{sentiment_counts["negative"]}</p>
+              <p class="pct" style="color:#dc2626;">{sent_neg_pct}</p>
               <p class="lbl">Negative</p>
             </div>
-            <div class="sentiment-box" style="background:#f2f5f9;">
-              <p class="num" style="color:#334155;">{total_headline_count}</p>
+            <div class="sentiment-box" style="background:#f8fafc;">
+              <p class="num" style="color:#243447;">{total_headline_count}</p>
+              <p class="pct" style="color:#64748b;">100%</p>
               <p class="lbl">Total Articles</p>
             </div>
           </div>
         </div>
 
-        <div class="panel">
+        <div class="panel sentiment-headline-panel">
           <h3>Recent News Headlines</h3>
           <div class="headline-list">
             {headline_rows_html}
@@ -1117,12 +1357,12 @@ def _build_fibonacci_rows(levels: Any, currency: str) -> str:
     return "".join(rows)
 
 
-def _build_headline_feed_rows(headlines: Any) -> str:
+def _build_headline_feed_rows(headlines: Any, max_items: int = 24) -> str:
     if not isinstance(headlines, list) or not headlines:
-        return '<div class="headline-row"><span class="dot dot-neu"></span><span>No headlines available.</span><span class="headline-source">N/A</span></div>'
+        return '<div class="headline-row"><span class="dot dot-neu"></span><span class="headline-title">No headlines available.</span><span class="headline-source">N/A</span></div>'
 
     rows: list[str] = []
-    for row in headlines[:14]:
+    for row in headlines[:max_items]:
         if not isinstance(row, dict):
             continue
         sentiment = str(row.get("sentiment") or "").strip().lower()
@@ -1136,12 +1376,12 @@ def _build_headline_feed_rows(headlines: Any) -> str:
         rows.append(
             "<div class=\"headline-row\">"
             f"<span class=\"dot {dot_class}\"></span>"
-            f"<span>{escape(title)}</span>"
+            f"<span class=\"headline-title\">{escape(title)}</span>"
             f"<span class=\"headline-source\">{escape(source)}</span>"
             "</div>"
         )
     if not rows:
-        return '<div class="headline-row"><span class="dot dot-neu"></span><span>No headlines available.</span><span class="headline-source">N/A</span></div>'
+        return '<div class="headline-row"><span class="dot dot-neu"></span><span class="headline-title">No headlines available.</span><span class="headline-source">N/A</span></div>'
     return "".join(rows)
 
 
@@ -1175,11 +1415,11 @@ def _format_signed_percent(value: float | None) -> str:
 
 def _score_badge_bg(value: float | None) -> str:
     if value is None:
-        return "#6b7280"
+        return "#64748b"
     if value >= 65:
-        return "#16a34a"
+        return "#059669"
     if value >= 45:
-        return "#d97706"
+        return "#b7791f"
     return "#dc2626"
 
 
@@ -1241,12 +1481,12 @@ def _build_shareholding_donut_svg(
         values = [0.0, 0.0, 1.0]
         total = 1.0
     percentages = [value / total for value in values]
-    colors = ["#38bdf8", "#22c55e", "#facc15"]
+    colors = ["#0ea5e9", "#10b981", "#f59e0b"]
 
-    cx = 120.0
-    cy = 120.0
-    radius = 64.0
-    stroke = 24.0
+    cx = 100.0
+    cy = 95.0
+    radius = 80.0
+    stroke = 28.0
     circumference = 2.0 * 3.14159265 * radius
     offset = 0.0
     circles: list[str] = []
@@ -1261,21 +1501,21 @@ def _build_shareholding_donut_svg(
 
     center_text = _format_percent_share(institutional_share)
     return (
-        '<svg class="score-svg" viewBox="0 0 430 220" xmlns="http://www.w3.org/2000/svg">'
-        '<rect x="0" y="0" width="430" height="220" fill="transparent" />'
+        '<svg class="score-svg" viewBox="0 0 460 185" xmlns="http://www.w3.org/2000/svg">'
+        '<rect x="0" y="0" width="460" height="185" fill="transparent" />'
         f'{"".join(circles)}'
-        f'<circle cx="{cx}" cy="{cy}" r="41" fill="#f3f8ff" />'
-        f'<text x="{cx}" y="{cy - 4}" text-anchor="middle" font-size="18" font-weight="700" fill="#1e3a5f">{escape(center_text)}</text>'
-        f'<text x="{cx}" y="{cy + 14}" text-anchor="middle" font-size="9" fill="#5f738f">Institutional</text>'
-        '<rect x="230" y="74" width="14" height="14" rx="3" fill="#38bdf8" />'
-        '<text x="252" y="85" font-size="13" font-weight="600" fill="#1f3b5a">Institutional</text>'
-        '<rect x="230" y="106" width="14" height="14" rx="3" fill="#22c55e" />'
-        '<text x="252" y="117" font-size="13" font-weight="600" fill="#1f3b5a">Retail / Public</text>'
-        '<rect x="230" y="138" width="14" height="14" rx="3" fill="#facc15" />'
-        '<text x="252" y="149" font-size="13" font-weight="600" fill="#1f3b5a">Promoter</text>'
-        f'<text x="390" y="86" text-anchor="end" font-size="13" font-weight="700" fill="#0f172a">{escape(_format_percent_share(institutional_share))}</text>'
-        f'<text x="390" y="118" text-anchor="end" font-size="13" font-weight="700" fill="#0f172a">{escape(_format_percent_share(public_share))}</text>'
-        f'<text x="390" y="150" text-anchor="end" font-size="13" font-weight="700" fill="#0f172a">{escape(_format_percent_share(promoter_share))}</text>'
+        f'<circle cx="{cx}" cy="{cy}" r="55" fill="#f8fafc" />'
+        f'<text x="{cx}" y="{cy - 6}" text-anchor="middle" font-size="20" font-weight="800" fill="#111827">{escape(center_text)}</text>'
+        f'<text x="{cx}" y="{cy + 14}" text-anchor="middle" font-size="12" fill="#64748b">Institutional</text>'
+        '<rect x="240" y="40" width="18" height="18" rx="4" fill="#0ea5e9" />'
+        '<text x="266" y="54" font-size="16" font-weight="700" fill="#243447">Institutional</text>'
+        '<rect x="240" y="78" width="18" height="18" rx="4" fill="#10b981" />'
+        '<text x="266" y="92" font-size="16" font-weight="700" fill="#243447">Retail / Public</text>'
+        '<rect x="240" y="116" width="18" height="18" rx="4" fill="#f59e0b" />'
+        '<text x="266" y="130" font-size="16" font-weight="700" fill="#243447">Promoter</text>'
+        f'<text x="455" y="54" text-anchor="end" font-size="17" font-weight="800" fill="#111827">{escape(_format_percent_share(institutional_share))}</text>'
+        f'<text x="455" y="92" text-anchor="end" font-size="17" font-weight="800" fill="#111827">{escape(_format_percent_share(public_share))}</text>'
+        f'<text x="455" y="130" text-anchor="end" font-size="17" font-weight="800" fill="#111827">{escape(_format_percent_share(promoter_share))}</text>'
         "</svg>"
     )
 
@@ -1287,11 +1527,11 @@ def _build_score_gauge_svg(value: float | None) -> str:
     radius = 68.0
 
     segments = [
-        (180, 144, "#f97316"),
-        (144, 108, "#f59e0b"),
+        (180, 144, "#ef4444"),
+        (144, 108, "#f97316"),
         (108, 72, "#eab308"),
         (72, 36, "#22c55e"),
-        (36, 0, "#16a34a"),
+        (36, 0, "#059669"),
     ]
     arcs = "".join(
         f'<polyline points="{_arc_polyline_points(cx, cy, radius, start, end)}" '
@@ -1307,9 +1547,9 @@ def _build_score_gauge_svg(value: float | None) -> str:
     return (
         '<svg class="score-svg" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">'
         f"{arcs}"
-        f'<line x1="{cx:.2f}" y1="{cy:.2f}" x2="{needle_x:.2f}" y2="{needle_y:.2f}" stroke="#64748b" stroke-width="5" stroke-linecap="round" />'
-        f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="6" fill="#64748b" />'
-        f'<text x="{cx:.2f}" y="112" text-anchor="middle" font-size="16" font-weight="700" fill="#0f172a">{escape(value_label)}</text>'
+        f'<line x1="{cx:.2f}" y1="{cy:.2f}" x2="{needle_x:.2f}" y2="{needle_y:.2f}" stroke="#52677f" stroke-width="5" stroke-linecap="round" />'
+        f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="6" fill="#52677f" />'
+        f'<text x="{cx:.2f}" y="112" text-anchor="middle" font-size="18" font-weight="700" fill="#111827">{escape(value_label)}</text>'
         "</svg>"
     )
 
@@ -1353,16 +1593,16 @@ def _build_score_chart_svg(score_items: list[tuple[str, float | None]]) -> str:
         value_label = "N/A" if value is None else f"{value:.1f}"
 
         svg_parts.append(
-            f'<text x="0" y="{y + 13}" font-size="12" fill="#111827" font-weight="600">{escape(label)}</text>'
+            f'<text x="0" y="{y + 13}" font-size="14" fill="#243447" font-weight="600">{escape(label)}</text>'
         )
         svg_parts.append(
-            f'<rect x="{bar_x}" y="{y}" width="{bar_w}" height="14" rx="7" fill="#e5e7eb" />'
+            f'<rect x="{bar_x}" y="{y}" width="{bar_w}" height="14" rx="7" fill="#e2e8f0" />'
         )
         svg_parts.append(
             f'<rect x="{bar_x}" y="{y}" width="{fill_w:.2f}" height="14" rx="7" fill="{color}" />'
         )
         svg_parts.append(
-            f'<text x="{bar_x + bar_w + 10}" y="{y + 12}" font-size="11" fill="#111827">{escape(value_label)}</text>'
+            f'<text x="{bar_x + bar_w + 10}" y="{y + 12}" font-size="13" fill="#243447">{escape(value_label)}</text>'
         )
 
     svg_parts.append("</svg>")
@@ -1395,7 +1635,7 @@ def _build_fundamental_chart_svg(revenue_trend: Any) -> str:
         series_a_name="Revenue (Bn)",
         series_b_name="Net Profit (Bn)",
         color_a="#2563eb",
-        color_b="#16a34a",
+        color_b="#059669",
     )
 
 
@@ -1432,7 +1672,7 @@ def _build_technical_price_chart_svg(ohlcv: Any) -> str:
 def _build_sentiment_chart_svg(counts: dict[str, int]) -> str:
     labels = ["Positive", "Neutral", "Negative"]
     values = [counts["positive"], counts["neutral"], counts["negative"]]
-    colors = ["#16a34a", "#f59e0b", "#dc2626"]
+    colors = ["#059669", "#f59e0b", "#dc2626"]
 
     total = sum(values)
     if total <= 0:
@@ -1467,10 +1707,10 @@ def _build_sentiment_chart_svg(counts: dict[str, int]) -> str:
             f'<rect x="{x}" y="{y:.2f}" width="{bar_w}" height="{h:.2f}" fill="{color}" rx="8" />'
         )
         parts.append(
-            f'<text x="{x + bar_w / 2:.1f}" y="{y - 6:.2f}" text-anchor="middle" font-size="11" fill="#111827">{value}</text>'
+            f'<text x="{x + bar_w / 2:.1f}" y="{y - 6:.2f}" text-anchor="middle" font-size="13" fill="#243447">{value}</text>'
         )
         parts.append(
-            f'<text x="{x + bar_w / 2:.1f}" y="{height - 16}" text-anchor="middle" font-size="11" fill="#111827">{escape(label)} ({pct:.1f}%)</text>'
+            f'<text x="{x + bar_w / 2:.1f}" y="{height - 16}" text-anchor="middle" font-size="13" fill="#243447">{escape(label)} ({pct:.1f}%)</text>'
         )
 
     parts.append("</svg>")
@@ -1486,12 +1726,12 @@ def _build_dual_series_bar_svg(
     color_a: str,
     color_b: str,
 ) -> str:
-    width = 760
-    height = 240
-    margin_top = 34
-    margin_bottom = 40
-    margin_left = 56
-    margin_right = 16
+    width = 900
+    height = 305
+    margin_top = 58
+    margin_bottom = 48
+    margin_left = 74
+    margin_right = 74
     plot_h = height - margin_top - margin_bottom
     plot_w = width - margin_left - margin_right
 
@@ -1500,37 +1740,56 @@ def _build_dual_series_bar_svg(
     max_val = max(max(vals), 0.0) if vals else 1.0
     if max_val == min_val:
         max_val = min_val + 1.0
+    max_val *= 1.12
 
     def y_for(value: float) -> float:
         return margin_top + (max_val - value) / (max_val - min_val) * plot_h
 
+    def label_for(value: float) -> str:
+        if abs(value) >= 1000:
+            return f"{value / 1000:.1f}T"
+        if abs(value) >= 100:
+            return f"{value:.0f}B"
+        return f"{value:.1f}B"
+
     zero_y = y_for(0.0)
     count = max(1, len(labels))
-    slot_w = plot_w / count
-    bar_w = min(26.0, slot_w * 0.28)
-    gap = bar_w * 0.35
+    slot_w = plot_w / max(1, count - 1)
+    bar_w = min(38.0, plot_w / max(1, count) * 0.22)
+    gap = bar_w * 0.42
+    group_half_w = bar_w + gap / 2
+    grid_x1 = max(0.0, margin_left - group_half_w - 8.0)
+    grid_x2 = min(float(width), width - margin_right + group_half_w + 8.0)
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
     ]
+    for step in (0.25, 0.5, 0.75):
+        grid_y = margin_top + plot_h * step
+        parts.append(
+            f'<line x1="{grid_x1:.2f}" y1="{grid_y:.2f}" x2="{grid_x2:.2f}" y2="{grid_y:.2f}" stroke="#e6edf5" stroke-width="1" />'
+        )
     parts.append(
-        f'<line x1="{margin_left}" y1="{zero_y:.2f}" x2="{width - margin_right}" y2="{zero_y:.2f}" stroke="#94a3b8" stroke-width="1.2" />'
+        f'<line x1="{grid_x1:.2f}" y1="{zero_y:.2f}" x2="{grid_x2:.2f}" y2="{zero_y:.2f}" stroke="#9aaac0" stroke-width="1.4" />'
     )
     parts.append(
-        f'<text x="{margin_left}" y="16" font-size="11" fill="#334155">{escape(series_a_name)}</text>'
+        f'<rect x="{margin_left}" y="16" width="16" height="10" fill="{color_a}" rx="3" />'
     )
     parts.append(
-        f'<rect x="{margin_left + 105}" y="8" width="14" height="8" fill="{color_a}" rx="2" />'
+        f'<text x="{margin_left + 24}" y="27" font-size="16" font-weight="600" fill="#243447">{escape(series_a_name)}</text>'
     )
     parts.append(
-        f'<text x="{margin_left + 125}" y="16" font-size="11" fill="#334155">{escape(series_b_name)}</text>'
+        f'<rect x="{margin_left + 178}" y="16" width="16" height="10" fill="{color_b}" rx="3" />'
     )
     parts.append(
-        f'<rect x="{margin_left + 220}" y="8" width="14" height="8" fill="{color_b}" rx="2" />'
+        f'<text x="{margin_left + 202}" y="27" font-size="16" font-weight="600" fill="#243447">{escape(series_b_name)}</text>'
+    )
+    parts.append(
+        f'<text x="{width - margin_right}" y="27" text-anchor="end" font-size="13" font-weight="600" fill="#64748b">Billions</text>'
     )
 
     for idx, label in enumerate(labels):
-        center_x = margin_left + slot_w * idx + slot_w / 2
+        center_x = margin_left + (slot_w * idx if count > 1 else plot_w / 2)
 
         for value, color, shift in (
             (series_a[idx], color_a, -(bar_w / 2 + gap / 2)),
@@ -1540,11 +1799,14 @@ def _build_dual_series_bar_svg(
             bar_y = y_for(value) if value >= 0 else zero_y
             bar_h = abs(y_for(value) - zero_y)
             parts.append(
-                f'<rect x="{bar_x:.2f}" y="{bar_y:.2f}" width="{bar_w:.2f}" height="{bar_h:.2f}" fill="{color}" rx="3" />'
+                f'<rect x="{bar_x:.2f}" y="{bar_y:.2f}" width="{bar_w:.2f}" height="{bar_h:.2f}" fill="{color}" rx="5" />'
+            )
+            parts.append(
+                f'<text x="{bar_x + bar_w / 2:.2f}" y="{bar_y - 7:.2f}" text-anchor="middle" font-size="12" font-weight="700" fill="#52677f">{escape(label_for(value))}</text>'
             )
 
         parts.append(
-            f'<text x="{center_x:.2f}" y="{height - 14}" text-anchor="middle" font-size="10.5" fill="#334155">{escape(label)}</text>'
+            f'<text x="{center_x:.2f}" y="{height - 16}" text-anchor="middle" font-size="16" font-weight="700" fill="#243447">{escape(label)}</text>'
         )
 
     parts.append("</svg>")
@@ -1580,12 +1842,12 @@ def _build_line_svg(
     polyline = " ".join(points)
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
-        f'<rect x="{margin_left}" y="{margin_top}" width="{plot_w}" height="{plot_h}" fill="#ffffff" stroke="#e5e7eb" />'
+        f'<rect x="{margin_left}" y="{margin_top}" width="{plot_w}" height="{plot_h}" fill="#ffffff" stroke="#e6edf5" />'
         f'<polyline fill="none" stroke="{line_color}" stroke-width="2.2" points="{polyline}" />'
-        f'<text x="{margin_left}" y="14" font-size="11" fill="#111827">Max: {escape(_format_number(vmax))}</text>'
-        f'<text x="{margin_left}" y="{height - 8}" font-size="11" fill="#111827">Min: {escape(_format_number(vmin))}</text>'
-        f'<text x="{margin_left}" y="{height - 20}" font-size="10" fill="#6b7280">{escape(start_label)}</text>'
-        f'<text x="{width - margin_right}" y="{height - 20}" text-anchor="end" font-size="10" fill="#6b7280">{escape(end_label)}</text>'
+        f'<text x="{margin_left}" y="14" font-size="13" fill="#243447">Max: {escape(_format_number(vmax))}</text>'
+        f'<text x="{margin_left}" y="{height - 8}" font-size="13" fill="#243447">Min: {escape(_format_number(vmin))}</text>'
+        f'<text x="{margin_left}" y="{height - 20}" font-size="12" fill="#6b7280">{escape(start_label)}</text>'
+        f'<text x="{width - margin_right}" y="{height - 20}" text-anchor="end" font-size="12" fill="#6b7280">{escape(end_label)}</text>'
         "</svg>"
     )
 
@@ -1707,7 +1969,7 @@ def _extract_summary_text(text: Any, default: str) -> str:
     if not raw:
         return default
     raw = re.sub(r"\s+", " ", raw).strip()
-    return raw[:500]
+    return raw[:1500]
 
 
 def _strip_markdown(text: str) -> str:
@@ -1832,11 +2094,11 @@ def _format_date(value: Any) -> str:
 
 def _score_color(value: float | None) -> str:
     if value is None:
-        return "#6b7280"
+        return "#64748b"
     if value >= 65:
-        return "#16a34a"
+        return "#059669"
     if value >= 45:
-        return "#f59e0b"
+        return "#b7791f"
     return "#dc2626"
 
 
