@@ -461,6 +461,16 @@ export async function fetchComparisonAnalysis(
   return { results: mergedResults }
 }
 
+export async function fetchComparisonReport(
+  tickers: string[],
+  results: Record<string, unknown>
+): Promise<{ report: string }> {
+  return apiRequest<{ report: string }>('/api/analysis/compare-report', {
+    method: 'POST',
+    body: JSON.stringify({ tickers, results }),
+  })
+}
+
 // ─── Discussion Portal API ─────────────────────────────────────────────
 
 export async function fetchDiscussions(

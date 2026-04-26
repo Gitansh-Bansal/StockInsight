@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   AreaChart, Area,
@@ -8,7 +9,7 @@ import {
 import './App.css'
 import { AuthPanel } from './components/AuthPanel'
 import { StockSearchForm } from './components/StockSearchForm'
-import { changeUserPassword, completeGoogleSignup, downloadAnalysisPdf, fetchAnalysis, fetchComparisonAnalysis, fetchCurrentUser, loginUser, loginWithGoogle, logoutUser, registerUser } from './api'
+import { changeUserPassword, completeGoogleSignup, downloadAnalysisPdf, fetchAnalysis, fetchComparisonAnalysis, fetchComparisonReport, fetchCurrentUser, loginUser, loginWithGoogle, logoutUser, registerUser } from './api'
 import type { GoogleAuthResult } from './api'
 import { DiscussionSection } from './components/DiscussionSection'
 import type {
@@ -994,8 +995,19 @@ function ComparePage() {
       return null
     }
   })
+  const [timestamp, setTimestamp] = useState<number | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('compareTimestamp')
+      return saved ? parseInt(saved, 10) : null
+    } catch {
+      return null
+    }
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(() => sessionStorage.getItem('compareError') ?? '')
+  const [report, setReport] = useState<string | null>(() => sessionStorage.getItem('compareReport'))
+  const [isReportLoading, setIsReportLoading] = useState(false)
+  const [reportError, setReportError] = useState('')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -1012,12 +1024,28 @@ function ComparePage() {
   }, [results])
 
   useEffect(() => {
+    if (timestamp) {
+      sessionStorage.setItem('compareTimestamp', timestamp.toString())
+    } else {
+      sessionStorage.removeItem('compareTimestamp')
+    }
+  }, [timestamp])
+
+  useEffect(() => {
     if (error) {
       sessionStorage.setItem('compareError', error)
       return
     }
     sessionStorage.removeItem('compareError')
   }, [error])
+
+  useEffect(() => {
+    if (report) {
+      sessionStorage.setItem('compareReport', report)
+    } else {
+      sessionStorage.removeItem('compareReport')
+    }
+  }, [report])
 
   const addTicker = useCallback((raw: string) => {
     const ticker = raw.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, '')
@@ -1038,6 +1066,9 @@ function ComparePage() {
     setIsLoading(true)
     setError('')
     setResults(null)
+    setTimestamp(null)
+    setReport(null)
+    setReportError('')
     setElapsedSeconds(0)
 
     const startTime = Date.now()
@@ -1048,6 +1079,7 @@ function ComparePage() {
     try {
       const response = await fetchComparisonAnalysis(tickers)
       setResults(response)
+      setTimestamp(Date.now())
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Comparison failed.')
     } finally {
@@ -1091,6 +1123,26 @@ function ComparePage() {
   }, [results])
 
   const bestMetrics = useMemo(() => getBestMetrics(results, orderedTickers), [results, orderedTickers])
+
+  const handleGenerateReport = useCallback(async () => {
+    if (!results || orderedTickers.length < 2) return
+    setIsReportLoading(true)
+    setReportError('')
+    try {
+      const response = await fetchComparisonReport(orderedTickers, results.results as Record<string, unknown>)
+      setReport(response.report)
+    } catch (err: unknown) {
+      setReportError(err instanceof Error ? err.message : 'Report generation failed.')
+    } finally {
+      setIsReportLoading(false)
+    }
+  }, [results, orderedTickers])
+
+  useEffect(() => {
+    if (results && orderedTickers.length >= 2 && !report && !isReportLoading && !reportError) {
+      handleGenerateReport()
+    }
+  }, [results, orderedTickers, report, isReportLoading, reportError, handleGenerateReport])
 
   return (
     <section className="compare-page">
@@ -1137,7 +1189,7 @@ function ComparePage() {
             <button
               type="button"
               className="compare-clear-btn"
-              onClick={() => { setTickers([]); setResults(null); setError('') }}
+              onClick={() => { setTickers([]); setResults(null); setTimestamp(null); setError('') }}
             >
               Clear All
             </button>
@@ -1145,6 +1197,11 @@ function ComparePage() {
         </div>
         {tickers.length > 0 && tickers.length < 2 && (
           <p className="compare-hint">Add at least 2 tickers to compare.</p>
+        )}
+        {results && !isLoading && timestamp && (
+          <p className="compare-hint" style={{ marginTop: '0.75rem', opacity: 0.8 }}>
+            Comparison generated at {new Date(timestamp).toLocaleTimeString()}. Click 'Run Comparison' for an updated analysis.
+          </p>
         )}
       </div>
 
@@ -1165,18 +1222,60 @@ function ComparePage() {
       )}
 
       {results && !isLoading && orderedTickers.length > 0 && (
-        <div className="compare-results-cards reveal">
-          {orderedTickers.map(t => (
-            <CompareCard 
-              key={t}
-              ticker={t}
-              result={getResult(t)}
-              error={getError(t)}
-              bestMetrics={bestMetrics}
-              onRemove={() => removeTicker(t)}
-              onView={() => navigate(`/stock/${encodeURIComponent(t)}/overview`)}
-            />
-          ))}
+        <div className="compare-results-container">
+          {isReportLoading ? (
+            <article className="panel reveal loading-panel" style={{ display: 'block', marginBottom: '1.5rem' }}>
+              <header className="panel-head" style={{ marginBottom: '1rem' }}>
+                <h2>AI Comparison Report</h2>
+              </header>
+              <div className="loading-lines">
+                <span />
+                <span />
+                <span />
+              </div>
+            </article>
+          ) : reportError ? (
+            <div className="error-card reveal" style={{ marginBottom: '1.5rem' }}>
+              <p>{reportError}</p>
+              <button type="button" onClick={handleGenerateReport}>Retry Report Generation</button>
+            </div>
+          ) : report ? (() => {
+            const isFallback = report.startsWith('Comparative analysis is currently unavailable')
+            return (
+              <article className="panel reveal" style={{ display: 'block', marginBottom: '1.5rem', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-sm)' }}>
+                <header className="panel-head" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem' }}>AI Comparison Report</h2>
+                  {isFallback && (
+                    <button
+                      type="button"
+                      className="compare-run-btn"
+                      style={{ padding: '0.35rem 0.9rem', fontSize: '0.85rem' }}
+                      onClick={() => { setReport(null); handleGenerateReport() }}
+                    >
+                      Try again
+                    </button>
+                  )}
+                </header>
+                <div className="markdown-body" style={{ lineHeight: '1.6', fontSize: '0.95rem' }}>
+                  <ReactMarkdown>{report}</ReactMarkdown>
+                </div>
+              </article>
+            )
+          })() : null}
+
+          <div className="compare-results-cards reveal">
+            {orderedTickers.map(t => (
+              <CompareCard 
+                key={t}
+                ticker={t}
+                result={getResult(t)}
+                error={getError(t)}
+                bestMetrics={bestMetrics}
+                onRemove={() => removeTicker(t)}
+                onView={() => navigate(`/stock/${encodeURIComponent(t)}/overview`)}
+              />
+            ))}
+          </div>
         </div>
       )}
     </section>

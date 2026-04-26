@@ -948,6 +948,53 @@ html.dark .top-bar .search-suggestions {
   line-height: 1.5;
 }
 
+.analysis-copy h1,
+.analysis-copy h2,
+.analysis-copy h3 {
+  margin: 1.25rem 0 0.5rem;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.analysis-copy h1:first-child,
+.analysis-copy h2:first-child,
+.analysis-copy h3:first-child {
+  margin-top: 0;
+}
+
+.analysis-copy p {
+  margin: 0 0 0.75rem;
+}
+
+.ai-summary-heading {
+  font-size: 1.4rem !important;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.analysis-copy ul:last-child,
+.analysis-copy ol:last-child {
+  margin-bottom: 0;
+}
+
+.analysis-copy p:last-child {
+  margin-bottom: 0;
+}
+
+.analysis-copy ul,
+.analysis-copy ol {
+  margin: 0.5rem 0 1rem;
+  padding-left: 1.5rem;
+}
+
+.analysis-copy li {
+  margin-bottom: 0.3rem;
+}
+
+.analysis-copy li:last-child {
+  margin-bottom: 0;
+}
+
 .sentiment-summary {
   display: grid;
   grid-template-columns: 1fr;
@@ -7201,7 +7248,7 @@ html.dark .hp-pillars-section {
   display: flex;
   gap: 1.5rem;
   overflow-x: auto;
-  padding: 1rem 0 2rem;
+  padding: 0.25rem 0 2rem;
   scroll-snap-type: x mandatory;
 }
 

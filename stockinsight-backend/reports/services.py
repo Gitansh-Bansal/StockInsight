@@ -778,3 +778,133 @@ def _placeholder_report_bundle(
         "fullReport": _build_markdown_from_sections(ticker, sections),
         "sections": sections,
     }
+
+
+def generate_comparison_report(tickers: list[str], results: dict[str, Any]) -> str:
+    """
+    Generate an LLM comparison report comparing multiple stocks.
+    Uses Gemini with Groq fallback.
+    """
+    provider = _resolve_report_llm_provider()
+    
+    compact_results = {}
+    for t in tickers:
+        r = results.get(t)
+        if not r or "error" in r:
+            continue
+            
+        ov = r.get("overview", {})
+        fd = r.get("fundamental", {}).get("data", {})
+        td = r.get("technical", {}).get("indicators", {})
+        sd = r.get("sentiment", {})
+        
+        compact_results[t] = {
+            "overallScore": ov.get("predictedScore") or ov.get("overallScore"),
+            "verdict": ov.get("verdict"),
+            "fundamentalScore": ov.get("fundamentalScore"),
+            "technicalScore": ov.get("technicalScore"),
+            "sentimentScore": ov.get("sentimentScore"),
+            "fundamental": {
+                "sector": fd.get("sector"),
+                "trailingPE": fd.get("trailingPE"),
+                "forwardPE": fd.get("forwardPE"),
+                "revenueGrowth": fd.get("revenueGrowth"),
+                "profitMargins": fd.get("profitMargins"),
+                "debtToEquity": fd.get("debtToEquity"),
+                "returnOnEquity": fd.get("returnOnEquity"),
+            },
+            "technical": {
+                "rsi": td.get("RSI"),
+                "trend": r.get("technical", {}).get("trend"),
+                "signal": r.get("technical", {}).get("signal"),
+            },
+            "sentiment": {
+                "headlineCount": sd.get("data", {}).get("count", 0),
+            }
+        }
+
+    prompt = (
+        "Role: Senior Financial Analyst\n"
+        f"Task: Create a comparative equity research report for the following stocks: {', '.join(tickers)} based on the JSON input.\n"
+        "The output must be ONLY a valid JSON object in this exact format:\n"
+        "{\n"
+        '  "report": "Your full markdown report string here"\n'
+        "}\n\n"
+        "Markdown Report Structure:\n"
+        "1. Start immediately with an executive summary paragraph highlighting the clear winner based on overall scores and providing a 2-3 sentence rationale. DO NOT include an 'Executive Summary' heading.\n"
+        "2. Fundamental Comparison: Write a paragraph of 3-4 sentences extracting insights about valuations, growth, and profitability (use a ## heading).\n"
+        "3. Technical & Momentum: Write a paragraph of 3-4 sentences extracting insights about RSI, trends, and signals (use a ## heading).\n"
+        "4. Sentiment Comparison: Write a paragraph of 3-4 sentences extracting insights about overall sentiment scores (use a ## heading).\n\n"
+        "Note:\n"
+        "- For sections 2, 3, and 4, you MUST write exactly one paragraph of 3-4 sentences. Do not use bullet points or lists.\n"
+        "- Keep it concise, neutral, and professional.\n"
+        "- Use standard markdown headings (##) only for sections 2, 3, and 4.\n"
+        "- Do not use code fences around the JSON output.\n"
+        f"Input JSON:\n{json.dumps(compact_results, separators=(',', ':'))}"
+    )
+
+    def _call_groq(p: str) -> str | None:
+        load_dotenv()
+        api_key = (os.getenv("GROQ_API_KEY") or "").strip()
+        if not api_key: return None
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+            completion = client.chat.completions.create(
+                model=(os.getenv("GROQ_MODEL") or _DEFAULT_GROQ_MODEL),
+                messages=[
+                    {"role": "system", "content": "Return only one valid JSON object."},
+                    {"role": "user", "content": p},
+                ],
+                response_format={"type": "json_object"},
+                max_completion_tokens=2000,
+                temperature=0.2,
+            )
+            raw = str((completion.choices[0].message.content if completion.choices else "") or "").strip()
+            parsed = _parse_json_object(raw)
+            if parsed and "report" in parsed:
+                rep = str(parsed["report"])
+                rep = re.sub(r'(?i)^#+\s*Executive Summary\s*\n+', '', rep).strip()
+                return rep
+        except Exception:
+            pass
+        return None
+
+    def _call_gemini(p: str) -> str | None:
+        client = _get_gemini_client()
+        if not client: return None
+        try:
+            from google.genai import types
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=p,
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    response_mime_type="application/json",
+                ),
+            )
+            raw = (getattr(response, "text", "") or "").strip()
+            parsed = _parse_json_object(raw)
+            if parsed and "report" in parsed:
+                rep = str(parsed["report"])
+                rep = re.sub(r'(?i)^#+\s*Executive Summary\s*\n+', '', rep).strip()
+                return rep
+        except Exception:
+            pass
+        return None
+
+    fallback_report = f"Comparative analysis is currently unavailable for {', '.join(tickers)}."
+
+    if provider == "groq":
+        return _call_groq(prompt) or fallback_report
+    
+    # Default auto / gemini
+    gem_res = _call_gemini(prompt)
+    if gem_res: return gem_res
+    
+    if provider == "auto":
+        groq_res = _call_groq(_build_json_retry_prompt(prompt))
+        if groq_res: return groq_res
+        
+    return fallback_report
+

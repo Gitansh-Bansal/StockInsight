@@ -21,6 +21,11 @@ class CompareRequest(Schema):
     tickers: list[str]
 
 
+class CompareReportRequest(Schema):
+    tickers: list[str]
+    results: dict[str, Any]
+
+
 class ReportRequest(Schema):
     ticker: str
     fundamental_result: dict[str, Any] | None = None
@@ -95,6 +100,19 @@ def compare_stocks(request, payload: CompareRequest):
     if not tickers:
         return {"results": {}}
     return run_parallel_comparison(tickers)
+
+
+@router.post("/analysis/compare-report")
+def generate_compare_report(request, payload: CompareReportRequest):
+    """
+    Generate an LLM comparison summary for multiple tickers.
+    """
+    from reports.services import generate_comparison_report
+    report_md = generate_comparison_report(
+        tickers=payload.tickers,
+        results=payload.results
+    )
+    return {"report": report_md}
 
 
 @router.post("/analysis/generate-pdf")
