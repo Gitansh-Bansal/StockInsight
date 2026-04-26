@@ -72,7 +72,7 @@ function App() {
   const activeTicker = route.type === 'stock' ? route.ticker : null
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
-  
+
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
       const saved = localStorage.getItem('theme')
@@ -89,7 +89,7 @@ function App() {
     }
     try {
       localStorage.setItem('theme', theme)
-    } catch {}
+    } catch { }
   }, [theme])
 
   const toggleTheme = useCallback(() => {
@@ -598,7 +598,7 @@ function HomePage({ onSearch, onCompare, user }: HomePageProps) {
             ariaLabel="Search for a company or ticker"
             buttonLabel="Analyze"
           />
-          
+
           <div className="market-pulse-strip indian-market-pulse">
             {indianIndices.map(idx => {
               const isUp = idx.change >= 0
@@ -1441,14 +1441,14 @@ function AnalysisPage({ ticker, tab, user, theme, onTabChange }: AnalysisPagePro
                   setAnalysis(nextAnalysis)
                 }
               })
-            .catch((err) => {
-              console.error('Failed to generate report', err)
-            })
-            .finally(() => {
-              if (!cancelled) {
-                setIsGeneratingReport(false)
-              }
-            })
+              .catch((err) => {
+                console.error('Failed to generate report', err)
+              })
+              .finally(() => {
+                if (!cancelled) {
+                  setIsGeneratingReport(false)
+                }
+              })
           }
         }
       })
@@ -1938,8 +1938,8 @@ function StackedBarBurn({ labelA, labelB, valA, valB, colorA, colorB }: { labelA
         <div className="stacked-fill" style={{ width: `${percentB}%`, backgroundColor: colorB }}></div>
       </div>
       <div className="stacked-labels">
-        <div className="stacked-label"><span className="swatch" style={{backgroundColor: colorA}}></span>{labelA}: {a > 0 ? compactFormatter.format(a) : 'N/A'}</div>
-        <div className="stacked-label"><span className="swatch" style={{backgroundColor: colorB}}></span>{labelB}: {b > 0 ? compactFormatter.format(b) : 'N/A'}</div>
+        <div className="stacked-label"><span className="swatch" style={{ backgroundColor: colorA }}></span>{labelA}: {a > 0 ? compactFormatter.format(a) : 'N/A'}</div>
+        <div className="stacked-label"><span className="swatch" style={{ backgroundColor: colorB }}></span>{labelB}: {b > 0 ? compactFormatter.format(b) : 'N/A'}</div>
       </div>
     </div>
   )
@@ -1955,13 +1955,13 @@ function FundamentalSection({
 }: FundamentalSectionProps) {
   const revRef = useRef<HTMLDivElement | null>(null)
   const isRevInView = useInViewOnce(revRef, { threshold: 0, rootMargin: '100px 0px' })
-  
+
   const cashRef = useRef<HTMLDivElement | null>(null)
   const isCashInView = useInViewOnce(cashRef, { threshold: 0, rootMargin: '100px 0px' })
-  
+
   const shareRef = useRef<HTMLDivElement | null>(null)
   const isShareInView = useInViewOnce(shareRef, { threshold: 0, rootMargin: '100px 0px' })
-  
+
   const marginRef = useRef<HTMLDivElement | null>(null)
   const isMarginInView = useInViewOnce(marginRef, { threshold: 0, rootMargin: '100px 0px' })
   if (!result) {
@@ -2130,15 +2130,15 @@ function FundamentalSection({
         {/* Card 5: Financial Health */}
         <div className="fund-card">
           <h3>Financial Health</h3>
-          <StackedBarBurn 
-            labelA="Total Cash" 
-            labelB="Total Debt" 
-            valA={data.totalCash} 
-            valB={data.totalDebt} 
-            colorA="#10b981" 
-            colorB="#ef4444" 
+          <StackedBarBurn
+            labelA="Total Cash"
+            labelB="Total Debt"
+            valA={data.totalCash}
+            valB={data.totalDebt}
+            colorA="#10b981"
+            colorB="#ef4444"
           />
-          <div className="fund-metrics" style={{marginTop: '1rem'}}>
+          <div className="fund-metrics" style={{ marginTop: '1rem' }}>
             <div className="metric">
               <span className="label">Debt/Equity</span>
               <span className="val">{formatNumber(data.debtToEquity)}</span>
@@ -2178,10 +2178,10 @@ function FundamentalSection({
                     <td style={{ padding: '0.75rem 0.5rem' }}>{formatNumber(data.sectorPeersAnalysis.trailing.rawValue)}</td>
                     <td style={{ padding: '0.75rem 0.5rem' }}>{formatNumber(data.sectorPeersAnalysis.trailing.sectorMean)}</td>
                     <td style={{ padding: '0.75rem 0.5rem' }}>
-                      <span style={{ 
-                        padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, 
+                      <span style={{
+                        padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
                         backgroundColor: 'rgba(0,0,0,0.05)',
-                        color: data.sectorPeersAnalysis.trailing.relativeStandingLabel.toLowerCase().includes('under') ? '#10b981' : data.sectorPeersAnalysis.trailing.relativeStandingLabel.toLowerCase().includes('over') ? '#ef4444' : 'inherit' 
+                        color: data.sectorPeersAnalysis.trailing.relativeStandingLabel.toLowerCase().includes('under') ? '#10b981' : data.sectorPeersAnalysis.trailing.relativeStandingLabel.toLowerCase().includes('over') ? '#ef4444' : 'inherit'
                       }}>
                         {data.sectorPeersAnalysis.trailing.relativeStandingLabel}
                         {data.sectorPeersAnalysis.trailing.relativeStandingScore != null ? ` (${data.sectorPeersAnalysis.trailing.relativeStandingScore > 0 ? '+' : ''}${data.sectorPeersAnalysis.trailing.relativeStandingScore.toFixed(2)})` : ''}
@@ -2193,10 +2193,10 @@ function FundamentalSection({
                     <td style={{ padding: '0.75rem 0.5rem' }}>{formatNumber(data.sectorPeersAnalysis.forward.rawValue)}</td>
                     <td style={{ padding: '0.75rem 0.5rem' }}>{formatNumber(data.sectorPeersAnalysis.forward.sectorMean)}</td>
                     <td style={{ padding: '0.75rem 0.5rem' }}>
-                      <span style={{ 
-                        padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, 
+                      <span style={{
+                        padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
                         backgroundColor: 'rgba(0,0,0,0.05)',
-                        color: data.sectorPeersAnalysis.forward.relativeStandingLabel.toLowerCase().includes('under') ? '#10b981' : data.sectorPeersAnalysis.forward.relativeStandingLabel.toLowerCase().includes('over') ? '#ef4444' : 'inherit' 
+                        color: data.sectorPeersAnalysis.forward.relativeStandingLabel.toLowerCase().includes('under') ? '#10b981' : data.sectorPeersAnalysis.forward.relativeStandingLabel.toLowerCase().includes('over') ? '#ef4444' : 'inherit'
                       }}>
                         {data.sectorPeersAnalysis.forward.relativeStandingLabel}
                         {data.sectorPeersAnalysis.forward.relativeStandingScore != null ? ` (${data.sectorPeersAnalysis.forward.relativeStandingScore > 0 ? '+' : ''}${data.sectorPeersAnalysis.forward.relativeStandingScore.toFixed(2)})` : ''}
@@ -2250,14 +2250,14 @@ function FundamentalSection({
               <ResponsiveContainer width="100%" height={250}>
                 {isRevInView ? (
                   <BarChart data={data.revenueTrend}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                  <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={60} />
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} cursor={{fill: 'rgba(0,0,0,0.05)'}} />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Bar dataKey="revenue" name="Revenue" fill="var(--chart-slate)" radius={[4,4,0,0]} />
-                  <Bar dataKey="netProfit" name="Net Profit" fill="var(--chart-blue)" radius={[4,4,0,0]} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="year" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} width={60} />
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                    <Bar dataKey="revenue" name="Revenue" fill="var(--chart-slate)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="netProfit" name="Net Profit" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 ) : <div style={{ height: '100%' }} />}
               </ResponsiveContainer>
@@ -2272,24 +2272,24 @@ function FundamentalSection({
               <ResponsiveContainer width="100%" height={250}>
                 {isCashInView ? (
                   <AreaChart data={data.cashflowTrend}>
-                  <defs>
-                    <linearGradient id="colorOp" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--chart-blue)" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="var(--chart-blue)" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorFcf" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--chart-green)" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="var(--chart-green)" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                  <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={60} />
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Area type="monotone" dataKey="operatingCashFlow" name="Op Cash Flow" stroke="var(--chart-blue)" fillOpacity={1} fill="url(#colorOp)" stackId="1" />
-                  <Area type="monotone" dataKey="freeCashFlow" name="Free Cash Flow" stroke="var(--chart-green)" fillOpacity={1} fill="url(#colorFcf)" stackId="1" />
+                    <defs>
+                      <linearGradient id="colorOp" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--chart-blue)" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="var(--chart-blue)" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="colorFcf" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--chart-green)" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="var(--chart-green)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="year" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={(val) => compactFormatter.format(val)} tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} width={60} />
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val), displayCurrency)} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                    <Area type="monotone" dataKey="operatingCashFlow" name="Op Cash Flow" stroke="var(--chart-blue)" fillOpacity={1} fill="url(#colorOp)" stackId="1" />
+                    <Area type="monotone" dataKey="freeCashFlow" name="Free Cash Flow" stroke="var(--chart-green)" fillOpacity={1} fill="url(#colorFcf)" stackId="1" />
                   </AreaChart>
                 ) : <div style={{ height: '100%' }} />}
               </ResponsiveContainer>
@@ -2312,23 +2312,23 @@ function FundamentalSection({
                 <ResponsiveContainer width="100%" height={250}>
                   {isShareInView ? (
                     <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      {pieData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(1)}%`} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {pieData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(1)}%`} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                     </PieChart>
                   ) : <div style={{ height: '100%' }} />}
                 </ResponsiveContainer>
@@ -2344,14 +2344,14 @@ function FundamentalSection({
               <ResponsiveContainer width="100%" height={250}>
                 {isMarginInView ? (
                   <LineChart data={data.marginsTrend}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                  <XAxis dataKey="year" tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={(val) => `${(val * 100).toFixed(0)}%`} tick={{fill: '#6b7280', fontSize: 12}} axisLine={false} tickLine={false} width={45} />
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(2)}%`} />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Line type="monotone" dataKey="operatingMargin" name="Operating Margin" stroke="var(--chart-blue)" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="netMargin" name="Net Margin" stroke="var(--chart-green)" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="year" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={(val) => `${(val * 100).toFixed(0)}%`} tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} width={45} />
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <RechartsTooltip formatter={(val: any) => `${(val * 100).toFixed(2)}%`} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                    <Line type="monotone" dataKey="operatingMargin" name="Operating Margin" stroke="var(--chart-blue)" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="netMargin" name="Net Margin" stroke="var(--chart-green)" strokeWidth={3} dot={{ strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
                   </LineChart>
                 ) : <div style={{ height: '100%' }} />}
               </ResponsiveContainer>
@@ -3195,8 +3195,8 @@ function TechnicalSection({
               </div>
               <div className="price-range-cards">
                 {priceLadderRows.map((row, index) => (
-                  <article 
-                    key={row.key} 
+                  <article
+                    key={row.key}
                     className={`price-range-card kind-${row.kind}${isPriceLevelsInView ? ' is-animated' : ''}`}
                     style={isPriceLevelsInView ? { animationDelay: `${index * 30 + 50}ms` } : undefined}
                   >
@@ -3217,8 +3217,8 @@ function TechnicalSection({
             </header>
             <div className="indicator-dashboard-grid">
               {indicatorMiniCharts.map((chart, index) => (
-                <article 
-                  key={chart.key} 
+                <article
+                  key={chart.key}
                   className={`indicator-mini-chart${isIndicatorTrendsInView ? ' is-animated' : ''}`}
                   style={isIndicatorTrendsInView ? { animationDelay: `${index * 30 + 50}ms` } : undefined}
                 >
@@ -3725,8 +3725,8 @@ function FullReportSection({
       : null
   const priceChangePercent =
     isFiniteNumber(priceChange) &&
-    isFiniteNumber(previousClose) &&
-    previousClose !== 0
+      isFiniteNumber(previousClose) &&
+      previousClose !== 0
       ? (priceChange / previousClose) * 100
       : null
   const priceToneClass = !isFiniteNumber(priceChange)
@@ -4078,7 +4078,7 @@ function FullReportSection({
   ]
   const dominantOwnership = ownershipBreakdown.reduce((top, current) =>
     current.value > top.value ? current : top,
-  ownershipBreakdown[0])
+    ownershipBreakdown[0])
   const concentrationPercent = shareholding.institutional + shareholding.promoter
   const concentrationLabel = concentrationPercent >= 80
     ? 'High Concentration'
@@ -4125,7 +4125,7 @@ function FullReportSection({
             ) : (
               <>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M8 1v9m0 0L5 7m3 3 3-3M2 12v1.5A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M8 1v9m0 0L5 7m3 3 3-3M2 12v1.5A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 Download PDF Report
               </>
@@ -4507,8 +4507,8 @@ function pickPrimaryInsight(
 ): string {
   const bullets = raw
     ? extractBulletPoints(raw)
-        .map((item) => sanitizeReportText(item))
-        .filter(Boolean)
+      .map((item) => sanitizeReportText(item))
+      .filter(Boolean)
     : []
   if (bullets.length > 0) {
     return bullets.slice(0, 3).join(' ')
@@ -4524,9 +4524,9 @@ function pickPrimaryInsight(
 function buildRiskItems(raw: string | null | undefined): string[] {
   const bulletItems = raw
     ? extractBulletPoints(raw)
-        .map((item) => sanitizeReportText(item))
-        .filter(Boolean)
-        .slice(0, 3)
+      .map((item) => sanitizeReportText(item))
+      .filter(Boolean)
+      .slice(0, 3)
     : []
   if (bulletItems.length > 0) {
     return bulletItems
@@ -4704,8 +4704,8 @@ function buildSectionSummaryPoints(
 ): string[] {
   const fromBullets = raw
     ? extractBulletPoints(raw)
-        .map((item) => sanitizeReportText(item))
-        .filter(Boolean)
+      .map((item) => sanitizeReportText(item))
+      .filter(Boolean)
     : []
   if (fromBullets.length > 0) {
     return fromBullets.slice(0, 6)
@@ -4745,7 +4745,7 @@ function renderSection(
 ) {
   const llmSections: Partial<ReportSections> = analysis.reportSections ?? {}
   const displayCurrency = resolveAnalysisCurrency(analysis)
-  
+
   const getLlmSummary = (key: keyof ReportSections): string | undefined => {
     if (llmSections[key]) return llmSections[key]
     if (isGeneratingReport) return 'Generating Summary...'
@@ -5082,7 +5082,7 @@ function ColoredValue({ value, formatFn }: { value: number | null | undefined, f
   if (isNa) {
     return <span>{text}</span>
   }
-  
+
   if ((value as number) > 0) {
     return <span className="val-positive">{text}</span>
   } else if ((value as number) < 0) {
@@ -6540,8 +6540,8 @@ function extractBulletPoints(raw: string): string[] {
   const firstMarkerMatch = firstMarkerPattern.exec(normalizedText)
   const leadingText = firstMarkerMatch
     ? normalizedText
-        .slice(0, firstMarkerMatch.index + (firstMarkerMatch[1]?.length ?? 0))
-        .trim()
+      .slice(0, firstMarkerMatch.index + (firstMarkerMatch[1]?.length ?? 0))
+      .trim()
     : ''
 
   const lineBulletPattern = /^-\s+(.+)$/
