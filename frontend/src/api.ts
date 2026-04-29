@@ -1,4 +1,4 @@
-import type { AnalysisResponse, AuthUser, ComparisonResponse, DiscussionListResponse, DiscussionPost, DiscussionReply, OhlcvPoint, SearchSuggestion, VoteResponse } from './types'
+import type { AnalysisResponse, AuthUser, ComparisonResponse, DiscussionListResponse, DiscussionPost, DiscussionReply, OhlcvPoint, ReportSections, SearchSuggestion, VoteResponse } from './types'
 
 // const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
 //   /\/$/,
@@ -16,6 +16,7 @@ const envApiUrl = import.meta.env.VITE_API_BASE_URL;
 export const apiBaseUrl = envApiUrl ? envApiUrl : "http://localhost:8000";
 
 const inFlightAnalysisRequests = new Map<string, Promise<AnalysisResponse>>()
+const inFlightReportRequests = new Map<string, Promise<ReportBundleResponse>>()
 const inFlightSearchRequests = new Map<string, Promise<SearchSuggestion[]>>()
 const searchSuggestionCache = new Map<string, SearchSuggestion[]>()
 type AnalysisCacheEntry = {
@@ -268,12 +269,28 @@ export interface ReportBundleResponse {
   sections: import('./types').ReportSections
 }
 
+function hasCompleteReportSections(
+  sections: Partial<ReportSections> | null | undefined,
+): sections is ReportSections {
+  return Boolean(
+    sections?.overall?.trim() &&
+      sections.fundamental?.trim() &&
+      sections.technical?.trim() &&
+      sections.sentiment?.trim(),
+  )
+}
+
 export async function fetchAnalysisReport(
   ticker: string,
   analysisData: Omit<AnalysisResponse, 'ticker' | 'report' | 'reportSections' | 'reportSource' | 'error'>
 ): Promise<ReportBundleResponse> {
   const cleanTicker = ticker.trim().toUpperCase()
-  return apiRequest<ReportBundleResponse>('/api/analysis/report', {
+  const existingRequest = inFlightReportRequests.get(cleanTicker)
+  if (existingRequest) {
+    return existingRequest
+  }
+
+  const requestPromise = apiRequest<ReportBundleResponse>('/api/analysis/report', {
     method: 'POST',
     body: JSON.stringify({
       ticker: cleanTicker,
@@ -284,12 +301,35 @@ export async function fetchAnalysisReport(
       verdict: analysisData.overview.verdict,
     })
   })
+
+  inFlightReportRequests.set(cleanTicker, requestPromise)
+  try {
+    return await requestPromise
+  } finally {
+    inFlightReportRequests.delete(cleanTicker)
+  }
 }
 
 export async function downloadAnalysisPdf(
   analysis: AnalysisResponse,
 ): Promise<Blob> {
   const cleanTicker = analysis.ticker.trim().toUpperCase()
+  let pdfAnalysis: AnalysisResponse = {
+    ...analysis,
+    ticker: cleanTicker,
+  }
+
+  if (!hasCompleteReportSections(pdfAnalysis.reportSections)) {
+    const reportPayload = await fetchAnalysisReport(cleanTicker, pdfAnalysis)
+    pdfAnalysis = {
+      ...pdfAnalysis,
+      report: reportPayload.fullReport,
+      reportSections: reportPayload.sections,
+      reportSource: reportPayload.source,
+    }
+    setAnalysisCache(cleanTicker, pdfAnalysis)
+  }
+
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 90_000)
   let primaryErrorMessage = ''
@@ -309,7 +349,7 @@ export async function downloadAnalysisPdf(
         'X-CSRFToken': csrfToken,
       },
       body: JSON.stringify({
-        ...analysis,
+        ...pdfAnalysis,
         ticker: cleanTicker,
       }),
     })

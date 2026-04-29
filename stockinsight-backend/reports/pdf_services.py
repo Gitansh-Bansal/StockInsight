@@ -140,7 +140,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         default_text="Technical insights are currently unavailable.",
         max_items=6,
     )
-    sentiment_bullets = _extract_bullets(
+    sentiment_bullets, sentiment_summary = _parse_sentiment_summary(
         report_sections.get("sentiment"),
         default_text="Sentiment insights are currently unavailable.",
         max_items=7,
@@ -296,10 +296,15 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
             "Volume confirmation is critical — price moves on low volume are less reliable.",
             "Support and resistance levels define key risk/reward zones for position sizing.",
         ]
-    signals_html = "".join(
-        f"<li>{escape(str(item))}</li>" for item in technical_reasons[:6]
+    signals_html = _build_technical_signal_table_rows(
+        reasons=technical_reasons,
+        indicators=indicators,
+        technical=technical,
+        support_values=support_values,
+        resistance_values=resistance_values,
+        current_price=current_price,
+        currency=currency,
     )
-
     headline_rows_html = _build_headline_feed_rows(headlines, max_items=16)
     verdict_text = _safe_text(overview.get("verdict"))
     price_label = _format_currency_symbol(current_price, currency)
@@ -543,7 +548,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
 
     .two-col-chart-left {{
       display: grid;
-      grid-template-columns: 1.42fr 0.78fr;
+      grid-template-columns: 1.28fr 0.92fr;
       gap: 8px;
       margin-bottom: 8px;
     }}
@@ -571,6 +576,16 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
       width: 100% !important;
       max-width: 100%;
       height: auto;
+    }}
+
+    .revenue-trend-panel {{
+      height: 55mm;
+      overflow: hidden;
+      padding-right: 3px;
+    }}
+
+    .revenue-trend-panel .chart-wrap svg {{
+      height: 40mm;
     }}
 
     /* ── Tables ── */
@@ -663,6 +678,30 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
 
     .metric-panel .panel-table td:last-child {{
       font-size: 12.5px;
+    }}
+
+    .signal-table {{
+      font-size: 12.4px;
+      margin-top: 2px;
+    }}
+
+    .signal-table th,
+    .signal-table td {{
+      padding: 4px 4px;
+      line-height: 1.2;
+      white-space: normal;
+    }}
+
+    .signal-table th:first-child,
+    .signal-table td:first-child {{
+      width: 43%;
+    }}
+
+    .signal-table th:last-child,
+    .signal-table td:last-child {{
+      width: 57%;
+      text-align: left;
+      white-space: normal;
     }}
 
     /* ── Chips (Growth / Price Snapshot) ── */
@@ -799,21 +838,19 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
     .headline-row {{
       display: grid;
       grid-template-columns: 10px 1fr auto;
-      align-items: center;
+      align-items: start;
       gap: 6px;
-      padding: 4px 0;
+      padding: 5px 0 4px;
       border-bottom: 1px solid var(--table-border);
       color: var(--text-main);
       font-size: 11px;
-      line-height: 1.3;
-      overflow: hidden;
+      line-height: 1.45;
     }}
 
     .headline-title {{
       min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }}
 
     .dot {{
@@ -839,6 +876,25 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
     .bullet-list {{
       margin: 0;
       padding-left: 14px;
+    }}
+
+    .summary-text {{
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text-main);
+      margin-top: 4px;
+      padding: 0;
+      background: transparent;
+      border: none;
+    }}
+
+    .mini-heading {{
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin: 12px 0 2px;
+      font-weight: 800;
     }}
 
     .bullet-list li {{
@@ -994,7 +1050,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         </div>
 
         <div class="two-col-chart-left">
-          <div class="panel">
+          <div class="panel revenue-trend-panel">
             <h3>Revenue &amp; Profit Trend</h3>
             <div class="chart-wrap">{revenue_chart_svg}</div>
           </div>
@@ -1191,9 +1247,17 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         <div class="two-col">
           <div class="panel table-panel-xl">
             <h3>Key Technical Signals</h3>
-            <ul class="bullet-list">
-              {signals_html}
-            </ul>
+            <table class="panel-table signal-table">
+              <thead>
+                <tr>
+                  <th>Signal</th>
+                  <th>Reading</th>
+                </tr>
+              </thead>
+              <tbody>
+                {signals_html}
+              </tbody>
+            </table>
           </div>
           <div class="panel table-panel-xl">
             <h3>Volume &amp; Structure Analysis</h3>
@@ -1226,10 +1290,11 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         </div>
 
         <div class="panel">
-          <h3>Sentiment Analysis Summary</h3>
+          <h3>Sentiment Analysis Insights</h3>
           <ul class="bullet-list">
             {_build_bullet_items(sentiment_bullets)}
           </ul>
+          {f'<h4 class="mini-heading">Summary</h4><p class="summary-text">{escape(sentiment_summary)}</p>' if sentiment_summary else ''}
         </div>
 
         <div class="panel">
@@ -1309,7 +1374,7 @@ def _build_cashflow_rows(cashflow_rows: Any, currency: str) -> str:
         rows.append(
             "<tr>"
             f"<td>{escape(year)}</td>"
-            f"<td>{escape(op_cash)}</td>"
+            f'<td style="text-align:right;">{escape(op_cash)}</td>'
             f"<td>{escape(free_cash)}</td>"
             "</tr>"
         )
@@ -1339,6 +1404,98 @@ def _build_support_resistance_rows(
     if not rows:
         return "<tr><td>N/A</td><td>N/A</td></tr>"
     return "".join(rows)
+
+
+def _build_technical_signal_table_rows(
+    reasons: list[Any],
+    indicators: dict[str, Any],
+    technical: dict[str, Any],
+    support_values: list[float],
+    resistance_values: list[float],
+    current_price: float | None,
+    currency: str,
+) -> str:
+    close = _to_float(indicators.get("close")) or current_price
+    trend = _safe_text(technical.get("trend"))
+    signal = _safe_text(technical.get("signal"))
+    rows: list[tuple[str, str]] = []
+
+    primary_reason = next((str(item).strip() for item in reasons if str(item).strip()), "")
+    if primary_reason:
+        rows.append(("Primary Signal", primary_reason))
+
+    if trend != "N/A" or signal != "N/A":
+        rows.append(("Trend / Signal", f"{trend} / {signal}"))
+
+    moving_averages = [
+        _to_float(indicators.get("SMA20")),
+        _to_float(indicators.get("SMA50")),
+        _to_float(indicators.get("SMA200")),
+    ]
+    available_averages = [value for value in moving_averages if value is not None]
+    if close is not None and available_averages:
+        above_count = sum(1 for value in available_averages if close >= value)
+        rows.append(("MA Alignment", f"Above {above_count}/{len(available_averages)} key averages"))
+
+    rsi = _to_float(indicators.get("RSI"))
+    if rsi is not None:
+        if rsi >= 70:
+            rsi_zone = "overbought"
+        elif rsi <= 30:
+            rsi_zone = "oversold"
+        else:
+            rsi_zone = "neutral"
+        rows.append(("RSI", f"{rsi:.1f} ({rsi_zone})"))
+
+    macd = _to_float(indicators.get("MACD"))
+    macd_signal = _to_float(indicators.get("MACD_signal"))
+    if macd is not None and macd_signal is not None:
+        macd_bias = "Above signal" if macd >= macd_signal else "Below signal"
+        rows.append(("MACD", macd_bias))
+
+    adx = _to_float(indicators.get("ADX"))
+    if adx is not None:
+        if adx >= 25:
+            adx_note = "strong trend"
+        elif adx >= 20:
+            adx_note = "developing trend"
+        else:
+            adx_note = "weak/range-bound"
+        rows.append(("ADX", f"{adx:.1f} ({adx_note})"))
+
+    nearest_support = support_values[0] if support_values else None
+    nearest_resistance = resistance_values[0] if resistance_values else None
+    if nearest_support is not None or nearest_resistance is not None:
+        rows.append(
+            (
+                "Nearest Zones",
+                f"S {_format_currency_symbol(nearest_support, currency)} / "
+                f"R {_format_currency_symbol(nearest_resistance, currency)}",
+            )
+        )
+
+    fallback = [
+        ("Trend Direction", "Monitor moving average crossovers"),
+        ("RSI Watch", "Above 70 overbought; below 30 oversold"),
+        ("MACD Watch", "Direction shows short-term momentum"),
+        ("ADX Watch", "Above 25 confirms stronger trend"),
+        ("Volume", "Confirm price moves with activity"),
+        ("Risk Zones", "Use support/resistance for sizing"),
+    ]
+
+    for label, reading in fallback:
+        if len(rows) >= 6:
+            break
+        if all(existing_label != label for existing_label, _ in rows):
+            rows.append((label, reading))
+
+    return "".join(
+        "<tr>"
+        f"<td>{escape(label)}</td>"
+        f"<td>{escape(reading)}</td>"
+        "</tr>"
+        for label, reading in rows[:6]
+    )
 
 
 def _build_fibonacci_rows(levels: Any, currency: str) -> str:
@@ -1483,10 +1640,10 @@ def _build_shareholding_donut_svg(
     percentages = [value / total for value in values]
     colors = ["#0ea5e9", "#10b981", "#f59e0b"]
 
-    cx = 100.0
-    cy = 95.0
-    radius = 80.0
-    stroke = 28.0
+    cx = 96.0
+    cy = 92.0
+    radius = 72.0
+    stroke = 24.0
     circumference = 2.0 * 3.14159265 * radius
     offset = 0.0
     circles: list[str] = []
@@ -1501,21 +1658,21 @@ def _build_shareholding_donut_svg(
 
     center_text = _format_percent_share(institutional_share)
     return (
-        '<svg class="score-svg" viewBox="0 0 460 185" xmlns="http://www.w3.org/2000/svg">'
+        '<svg class="shareholding-svg" viewBox="0 0 460 185" xmlns="http://www.w3.org/2000/svg">'
         '<rect x="0" y="0" width="460" height="185" fill="transparent" />'
         f'{"".join(circles)}'
-        f'<circle cx="{cx}" cy="{cy}" r="55" fill="#f8fafc" />'
+        f'<circle cx="{cx}" cy="{cy}" r="49" fill="#f8fafc" />'
         f'<text x="{cx}" y="{cy - 6}" text-anchor="middle" font-size="20" font-weight="800" fill="#111827">{escape(center_text)}</text>'
         f'<text x="{cx}" y="{cy + 14}" text-anchor="middle" font-size="12" fill="#64748b">Institutional</text>'
-        '<rect x="240" y="40" width="18" height="18" rx="4" fill="#0ea5e9" />'
-        '<text x="266" y="54" font-size="16" font-weight="700" fill="#243447">Institutional</text>'
-        '<rect x="240" y="78" width="18" height="18" rx="4" fill="#10b981" />'
-        '<text x="266" y="92" font-size="16" font-weight="700" fill="#243447">Retail / Public</text>'
-        '<rect x="240" y="116" width="18" height="18" rx="4" fill="#f59e0b" />'
-        '<text x="266" y="130" font-size="16" font-weight="700" fill="#243447">Promoter</text>'
-        f'<text x="455" y="54" text-anchor="end" font-size="17" font-weight="800" fill="#111827">{escape(_format_percent_share(institutional_share))}</text>'
-        f'<text x="455" y="92" text-anchor="end" font-size="17" font-weight="800" fill="#111827">{escape(_format_percent_share(public_share))}</text>'
-        f'<text x="455" y="130" text-anchor="end" font-size="17" font-weight="800" fill="#111827">{escape(_format_percent_share(promoter_share))}</text>'
+        '<rect x="226" y="40" width="17" height="17" rx="4" fill="#0ea5e9" />'
+        '<text x="252" y="53" font-size="15" font-weight="700" fill="#243447">Institutional</text>'
+        '<rect x="226" y="78" width="17" height="17" rx="4" fill="#10b981" />'
+        '<text x="252" y="91" font-size="15" font-weight="700" fill="#243447">Retail / Public</text>'
+        '<rect x="226" y="116" width="17" height="17" rx="4" fill="#f59e0b" />'
+        '<text x="252" y="129" font-size="15" font-weight="700" fill="#243447">Promoter</text>'
+        f'<text x="452" y="53" text-anchor="end" font-size="15" font-weight="800" fill="#111827">{escape(_format_percent_share(institutional_share))}</text>'
+        f'<text x="452" y="91" text-anchor="end" font-size="15" font-weight="800" fill="#111827">{escape(_format_percent_share(public_share))}</text>'
+        f'<text x="452" y="129" text-anchor="end" font-size="15" font-weight="800" fill="#111827">{escape(_format_percent_share(promoter_share))}</text>'
         "</svg>"
     )
 
@@ -1545,11 +1702,11 @@ def _build_score_gauge_svg(value: float | None) -> str:
     needle_y = cy - (radius - 20.0) * sin(rad)
     value_label = "N/A" if value is None else f"{score:.1f}"
     return (
-        '<svg class="score-svg" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">'
+        '<svg class="score-svg" viewBox="0 0 200 126" xmlns="http://www.w3.org/2000/svg">'
         f"{arcs}"
         f'<line x1="{cx:.2f}" y1="{cy:.2f}" x2="{needle_x:.2f}" y2="{needle_y:.2f}" stroke="#52677f" stroke-width="5" stroke-linecap="round" />'
         f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="6" fill="#52677f" />'
-        f'<text x="{cx:.2f}" y="112" text-anchor="middle" font-size="18" font-weight="700" fill="#111827">{escape(value_label)}</text>'
+        f'<text x="{cx:.2f}" y="122" text-anchor="middle" font-size="18" font-weight="700" fill="#111827">{escape(value_label)}</text>'
         "</svg>"
     )
 
@@ -1728,10 +1885,10 @@ def _build_dual_series_bar_svg(
 ) -> str:
     width = 900
     height = 305
-    margin_top = 58
-    margin_bottom = 48
-    margin_left = 74
-    margin_right = 74
+    margin_top = 44
+    margin_bottom = 40
+    margin_left = 52
+    margin_right = 52
     plot_h = height - margin_top - margin_bottom
     plot_w = width - margin_left - margin_right
 
@@ -1755,7 +1912,7 @@ def _build_dual_series_bar_svg(
     zero_y = y_for(0.0)
     count = max(1, len(labels))
     slot_w = plot_w / max(1, count - 1)
-    bar_w = min(38.0, plot_w / max(1, count) * 0.22)
+    bar_w = min(44.0, plot_w / max(1, count) * 0.26)
     gap = bar_w * 0.42
     group_half_w = bar_w + gap / 2
     grid_x1 = max(0.0, margin_left - group_half_w - 8.0)
@@ -1925,43 +2082,105 @@ def _build_bullet_items(items: list[str]) -> str:
 
 
 def _extract_bullets(text: Any, default_text: str, max_items: int) -> list[str]:
-    raw = _strip_markdown(str(text or "")).strip()
-    if not raw:
+    """
+    Parse a section string into a list of bullet-point strings.
+
+    Strategy (mirrors the frontend extractBulletPoints):
+    1. Unescape literal \\n sequences that survive JSON round-tripping.
+    2. Normalize inline '. -' boundaries into real newlines so that
+       'Sentence one. - Sentence two' becomes two separate lines.
+    3. Walk lines: lines starting with '- '/'*'/'•' begin a new bullet;
+       other non-empty lines are appended to the current bullet (continuation).
+    4. If no markers were found, try splitting on '. - '.
+    5. Final fallback: sentence-boundary split.
+    """
+    raw_str = str(text or "").strip()
+    if not raw_str:
         return [default_text]
 
-    lines = [line.strip() for line in raw.splitlines() if line.strip()]
-    marker_pattern = re.compile(r"^(?:[-*•]\s+|\d+[.)]\s+)")
-    bullets: list[str] = []
-    has_explicit_markers = False
+    # Step 0 – strip markdown formatting
+    raw_str = _strip_markdown(raw_str)
 
-    for line in lines:
-        if marker_pattern.match(line):
-            has_explicit_markers = True
-        candidate = re.sub(r"^(?:[-*•]\s+|\d+[.)]\s+)+", "", line).strip(" -")
-        if candidate:
-            bullets.append(candidate)
-
-    if has_explicit_markers:
-        return bullets[:max_items]
-
-    if len(bullets) > 1:
-        return bullets[:max_items]
-
-    narrative = bullets[0] if bullets else raw
-    bullets = [
-        part.strip(" -")
-        for part in re.split(r"(?<=[.!?])\s+|;\s+", narrative)
-        if part.strip()
-    ]
-    if len(bullets) <= 1:
-        bullets = [
-            part.strip()
-            for part in re.split(r"\s+-\s+", narrative)
-            if part.strip()
-        ]
-    if not bullets:
+    # Step 1 – unescape literal \n that JSON sometimes preserves
+    raw_str = raw_str.replace('\\r\\n', '\n').replace('\\n', '\n').strip()
+    if not raw_str:
         return [default_text]
-    return bullets[:max_items]
+
+    # Step 2 – normalize '. -' inline bullet separators into real newlines
+    raw_str = re.sub(r'\.\s*(?=-\s+\S)', '.\n', raw_str)
+
+    # Step 3 – walk lines, support bullet markers and continuation lines
+    line_bullet_pattern = re.compile(r'^[-*\u2022]\s+(.+)$')
+    numbered_pattern    = re.compile(r'^\d+[.)]\s+(.+)$')
+    bullets_from_lines: list[str] = []
+    current = ""
+    has_markers = False
+
+    for raw_line in raw_str.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        m = line_bullet_pattern.match(line) or numbered_pattern.match(line)
+        if m:
+            has_markers = True
+            if current:
+                bullets_from_lines.append(current)
+            current = m.group(1).strip()
+        else:
+            if current:
+                current = f"{current} {line}".strip()
+
+    if current:
+        bullets_from_lines.append(current)
+
+    if has_markers and bullets_from_lines:
+        return bullets_from_lines[:max_items]
+
+    # Step 4 – no markers; try '. - ' split
+    flattened = re.sub(r"\s+", " ", raw_str).strip()
+    if ". - " in flattened:
+        segments = [s.strip() for s in flattened.split(". - ") if s.strip()]
+        if len(segments) > 1:
+            return segments[:max_items]
+
+    # Step 5 – sentence boundary fallback
+    narrative = bullets_from_lines[0] if bullets_from_lines else flattened
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', narrative) if s.strip()]
+    if len(sentences) > 1:
+        return sentences[:max_items]
+
+    return [narrative] if narrative else [default_text]
+
+
+def _parse_sentiment_summary(text: Any, default_text: str, max_items: int) -> tuple[list[str], str]:
+    """
+    Specifically for sentiment analysis output which often includes a "Summary:" 
+    section at the end. Mirrors frontend's parseSentimentSummary logic.
+    """
+    raw_str = str(text or "").strip()
+    if not raw_str:
+        return ([default_text], "")
+
+    # Pattern to find "Summary:" or "**Summary:**" etc.
+    summary_pattern = re.compile(r"(?:\*\*\s*)?\bsummary\b(?:\s*[:-]\s*)?(?:\s*\*\*)?\s*[:-]?\s*", re.IGNORECASE)
+    match = summary_pattern.search(raw_str)
+    
+    insights_part = raw_str
+    summary_part = ""
+    
+    if match:
+        insights_part = raw_str[:match.start()].strip()
+        summary_part = raw_str[match.end():].strip()
+    
+    # Extract bullets from the insights part
+    bullets = _extract_bullets(insights_part, default_text, max_items)
+    
+    # Clean up summary part
+    summary_part = re.sub(r"^[:\s-]+", "", summary_part)
+    # Strip any trailing markdown bold/italic if they were partially cut
+    summary_part = _strip_markdown(summary_part)
+    
+    return bullets, summary_part
 
 
 def _extract_summary_text(text: Any, default: str) -> str:

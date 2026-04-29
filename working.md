@@ -23,6 +23,7 @@ The backend is strictly divided into distinct domain-driven Django apps, each ta
 - Coordinates data retrieval from the `fundamental`, `technical`, and `sentiment` apps, subsequently passing that data to the `reports` app to generate a human-readable AI analysis.
 - Supports concurrent/parallel comparisons (`POST /api/analysis/compare`) of multiple stocks.
 - Exposes a `/search` endpoint to fetch company ticker suggestions using a fuzzy search.
+- Utilizes a specialized **ML Service** to provide a probability-based "Upside Potential" score using a trained XGBoost model.
 
 ### 2. `fundamental`
 **Purpose**: Fetches and processes core fundamental data about a company.
@@ -47,7 +48,9 @@ The backend is strictly divided into distinct domain-driven Django apps, each ta
 - Provides a `generate_report_bundle` service.
 - It receives aggregated metrics from the fundamental, technical, and sentiment analyses.
 - Synthesizes all disparate data points into a finalized, contextual narrative—serving as an executive summary for the user and determining an "Overall Score".
-- Uses an LLM fallback chain for reliability: Gemini is primary, Groq (gpt-oss) is used as fallback, and a deterministic placeholder report is returned if neither provider succeeds.
+- Supports both single-stock analysis and multi-ticker comparison reports.
+- Uses an LLM fallback chain for reliability: Gemini is primary, Groq (gpt-oss) is used as fallback.
+- Employs robust regex-based parsing to transform LLM outputs into structured bullet points and clean paragraphs, ensuring visual consistency across the dashboard and PDF exports.
 
 ### 6. `discussions`
 **Purpose**: Manages the community forum and social layer of the application.
@@ -73,7 +76,8 @@ The frontend is built to be interactive and heavily typesafe. The structure is s
 **Purpose**: The root entry points.
 **Working**: 
 - Defines the layout, handles application-wide state (like selected tickers or global authentication contexts), and includes the core CSS styles (`App.css`, `index.css`).
-- Contains the main grid mapping for where charts, reports, and sentiment widgets securely reside in the dashboard.
+- Contains the main grid mapping for where charts, reports, and sentiment widgets reside.
+- Houses primary page components such as the main Dashboard and the `ComparePage`.
 
 ### 2. `api.ts`
 **Purpose**: Centralized Axios/Fetch layer.
@@ -89,7 +93,15 @@ The frontend is built to be interactive and heavily typesafe. The structure is s
 * **`DiscussionSection.tsx`**
   **Working**: The user interface for the discussion board. Renders a specific ticker's forum topics fetching from `/api/discussions/{ticker}`. It includes UI logic for recursive rendering of nested replies and optimistic UI updates when upvoting/downvoting a post.
 * **`PdfReportTemplate.tsx`** & **`PdfReportTemplate.css`**
-  **Working**: Used strictly for report generation. Formats the comprehensive JSON analysis (fundamental, technical, sentiment + final verdict) into a clean, printable/exportable layout so that users can download their investment research.
+  **Working**: Formats the comprehensive JSON analysis (fundamental, technical, sentiment + final verdict) into a clean, printable/exportable layout.
+  **Recent Improvements**: Enhanced with precise visual alignment for financial tables (Cashflow, Balance Sheet) and improved handling of multi-line textual content to prevent truncation.
+
+### 4. `ComparePage` (Component)
+**Purpose**: Provides side-by-side comparison of multiple stocks.
+**Working**:
+- Orchestrates parallel analysis calls for selected tickers.
+- Persists report data in `sessionStorage` to maintain state across navigation.
+- Features timestamped hints to indicate data freshness and specialized prompts for comparative AI analysis.
 
 ---
 
@@ -124,13 +136,22 @@ Evaluates qualitative news utilizing cutting-edge Financial NLP text classificat
 *   **Calculations**: The NLP model yields `positive/neutral/negative` text labels bounding a predictive confidence score representing accuracy.
 *   **Final Score Engine**: StockInsight filters out strictly `neutral` data. The confidence levels of purely sentiment-bearing labels map directly into values of `-1` (Negative) and `1` (Positive). A weighted summation provides a mean metric strictly across `-1 to 1`. This maps into a straightforward percentage (`50 + 50 * Average`) determining the overarching sentiment score natively constrained between 0 and 100.
 
+### 4. ML-Based Predictive Scoring
+Beyond metric-based scoring, StockInsight employs a sophisticated machine learning layer to estimate future performance.
+*   **Algorithm**: Utilizes an **XGBoost Classifier** (with an automated Random Forest fallback) wrapped in a scikit-learn pipeline.
+*   **Predictive Goal**: Specifically trained to predict the probability that a stock's price will increase over a **30-day horizon**.
+*   **Feature Engineering**: The model ingests processed scores (Fundamental, Technical, Sentiment) alongside exogenous market indicators including the **VIX Index**, stock **Beta**, **PEG Ratio**, and 14-day **RSI**. It also accounts for industry-specific biases through one-hot encoded **Sector** data.
+*   **Output**: Returns a 0.0-100.0 probability score representing the "Upside Potential." This value is used to refine the final "Overall Score" presented to the user.
+
 ---
 
 ## End-to-End Workflow
 
 1. **User Discovery**: A user accesses the site, types "AAPL" into the `StockSearchForm.tsx`.
 2. **Analysis Orchestration**: The frontend calls `GET /api/analysis/AAPL`. 
-3. **Data Aggregation**: The backend `analysis` app orchestrates concurrent tasks. It asks `fundamental` for balance sheets, `technical` for moving averages, and `sentiment` for current news sentiment.
+   - **Cancellation**: Users can abort an ongoing analysis at any time. The frontend sends a signal to the backend to terminate the task, and the UI resets gracefully.
+3. **Data Aggregation**: The backend `analysis` app orchestrates concurrent tasks.
+ It asks `fundamental` for balance sheets, `technical` for moving averages, and `sentiment` for current news sentiment.
 4. **Report Synthesis**: Once data is collated, the `reports` app is called upon to bundle these into a qualitative report.
 5. **Presentation**: Data returns to the frontend, displaying dynamic charting and the textual report. The user can export this info using the `PdfReportTemplate.tsx`.
 6. **Community Interaction**: The user logs in via `AuthPanel.tsx` and scrolls to the `DiscussionSection.tsx`, reading top opinions on "AAPL" and participating in threads routed to the backend's `discussions` module.
@@ -139,4 +160,5 @@ Evaluates qualitative news utilizing cutting-edge Financial NLP text classificat
 
 ## Features Under Development
 
-- Implementation of a Random Forest model (using `scikit-learn`) to support final verdict generation.
+- Integration of real-time streaming data for live price updates.
+- Expansion of the ML model to support multi-class classification (e.g., Strong Buy, Buy, Hold, Sell).

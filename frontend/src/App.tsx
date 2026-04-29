@@ -3864,7 +3864,7 @@ function FullReportSection({
     } finally {
       setIsDownloadingPdf(false)
     }
-  }, [analysis.ticker, isDownloadingPdf])
+  }, [analysis, isDownloadingPdf])
 
   const reportText = normalizeInlineBulletLists(
     emphasizeSummaryLabel(analysis.report?.trim() ?? ''),
@@ -4288,12 +4288,17 @@ function FullReportSection({
             type="button"
             className="report-download-btn"
             onClick={handleDownloadPdf}
-            disabled={isDownloadingPdf}
+            disabled={isDownloadingPdf || isGeneratingReport}
           >
             {isDownloadingPdf ? (
               <>
                 <span className="report-download-spinner" aria-hidden="true" />
                 Generating PDF...
+              </>
+            ) : isGeneratingReport ? (
+              <>
+                <span className="report-download-spinner" aria-hidden="true" />
+                Preparing Report...
               </>
             ) : (
               <>
