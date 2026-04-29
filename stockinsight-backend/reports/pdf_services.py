@@ -305,7 +305,7 @@ def _build_report_html(analysis_payload: dict[str, Any]) -> str:
         current_price=current_price,
         currency=currency,
     )
-    headline_rows_html = _build_headline_feed_rows(headlines, max_items=16)
+    headline_rows_html = _build_headline_feed_rows(headlines, max_items=12)
     verdict_text = _safe_text(overview.get("verdict"))
     price_label = _format_currency_symbol(current_price, currency)
     market_cap_label = _format_large_number_symbol(fundamental.get("marketCap"), currency)
@@ -1514,7 +1514,7 @@ def _build_fibonacci_rows(levels: Any, currency: str) -> str:
     return "".join(rows)
 
 
-def _build_headline_feed_rows(headlines: Any, max_items: int = 24) -> str:
+def _build_headline_feed_rows(headlines: Any, max_items: int = 12) -> str:
     if not isinstance(headlines, list) or not headlines:
         return '<div class="headline-row"><span class="dot dot-neu"></span><span class="headline-title">No headlines available.</span><span class="headline-source">N/A</span></div>'
 

@@ -1323,62 +1323,7 @@ html.dark .top-bar .search-suggestions {
   justify-items: end;
 }
 
-.full-report-consensus-box {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(115px, 1fr));
-  gap: 0.9rem;
-  align-items: center;
-  border-radius: 1rem;
-  border: 1px solid #e2e8f0;
-  background: #f5f7fb;
-  padding: 0.7rem 0.95rem;
-}
 
-.full-report-consensus-box .label {
-  display: block;
-  margin-bottom: 0.3rem;
-  color: #8a95a8;
-  font-size: 0.56rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.full-report-consensus-box strong {
-  font-size: 1.45rem;
-  line-height: 1.1;
-}
-
-.full-report-consensus-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 5.2rem;
-  border-radius: 999px;
-  padding: 0.26rem 0.65rem;
-  border: 1px solid transparent;
-  background: #0f172a;
-  color: #ffffff;
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 800;
-}
-
-.full-report-consensus-chip.tone-positive {
-  background: #15803d; /* Green for BUY */
-  color: #ffffff;
-}
-
-.full-report-consensus-chip.tone-neutral {
-  background: #d97706; /* Amber/Yellow for HOLD */
-  color: #ffffff;
-}
-
-.full-report-consensus-chip.tone-negative {
-  background: #dc2626; /* Red for SELL */
-  color: #ffffff;
-}
 
 .full-report-main-grid {
   display: grid;
@@ -2071,9 +2016,7 @@ html.dark .top-bar .search-suggestions {
     grid-template-columns: 1fr;
   }
 
-  .full-report-consensus-box {
-    grid-template-columns: 1fr;
-  }
+
 
   .full-report-hero-right {
     width: 100%;
@@ -6638,18 +6581,7 @@ html.dark .full-report-hero-metric strong {
   color: var(--ink);
 }
 
-html.dark .full-report-consensus-box {
-  background: #1e293b;
-  border-color: var(--line);
-}
 
-html.dark .full-report-consensus-box .label {
-  color: var(--muted);
-}
-
-html.dark .full-report-consensus-box strong {
-  color: var(--ink);
-}
 
 html.dark .full-report-card {
   background: #1e293b;
@@ -6701,7 +6633,7 @@ html.dark .snapshot-tile-metric,
 html.dark .full-report-breadcrumbs,
 html.dark .full-report-exchange-tag,
 html.dark .full-report-hero-metric span,
-html.dark .full-report-consensus-box .label,
+
 html.dark .full-report-ownership-list li,
 html.dark .full-report-share-list li span,
 html.dark .full-report-revenue-legend span,

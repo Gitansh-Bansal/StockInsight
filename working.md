@@ -162,3 +162,25 @@ Beyond metric-based scoring, StockInsight employs a sophisticated machine learni
 
 - Integration of real-time streaming data for live price updates.
 - Expansion of the ML model to support multi-class classification (e.g., Strong Buy, Buy, Hold, Sell).
+
+---
+
+## Deployment & Infrastructure
+
+The StockInsight platform is designed for scalable deployment using modern cloud infrastructure.
+
+### 1. Frontend (Vercel)
+*   **Platform**: Deployed as a static SPA on **Vercel**.
+*   **Routing**: Configured via `vercel.json` to handle client-side routing by rewriting all requests to `index.html`.
+*   **API Connection**: Communicates with the backend via a centralized `api.ts` layer, with the base URL typically managed via environment variables.
+
+### 2. Backend (Django)
+*   **Framework**: High-performance REST APIs powered by **Django Ninja**.
+*   **Database**: Primarily uses **PostgreSQL** in production (configured via `DB_HOST`, `DB_NAME`, etc.).
+*   **System Dependencies**: Requires **GTK**, **Pango**, and **Cairo** libraries on the host system to support the **WeasyPrint** PDF engine.
+*   **ML Artifacts**: Trained models (XGBoost/Random Forest) are loaded from the `ml_artifacts/` directory at runtime.
+
+### 3. CI/CD & Environments
+*   **Local Development**: Supports **SQLite** fallback for rapid prototyping without a full PostgreSQL setup.
+*   **Security**: Environment variables are managed via `.env` files (loaded automatically by `settings.py`).
+*   **Version Control**: Automated deployment pipelines are typically triggered on merges to the `main` branch.

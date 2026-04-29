@@ -3909,7 +3909,7 @@ function FullReportSection({
       : 'negative'
 
 
-  const targetPriceLabel = formatCurrency(fundamentalData?.targetMeanPrice, displayCurrency)
+
   const marketCapLabel = formatCompactMoney(fundamentalData?.marketCap, displayCurrency)
 
   const executiveBriefing = summarizeForCard(
@@ -4349,20 +4349,7 @@ function FullReportSection({
           </div>
         </div>
 
-        <div className="full-report-hero-right">
-          <div className="full-report-consensus-box">
-            <div>
-              <span className="label">Overall Insight Score</span>
-              <span className={`full-report-consensus-chip tone-${isFiniteNumber(analysis.overview.overallScore) ? (analysis.overview.overallScore >= 60 ? 'positive' : analysis.overview.overallScore >= 40 ? 'neutral' : 'negative') : 'neutral'}`}>
-                {isFiniteNumber(analysis.overview.overallScore) ? (analysis.overview.overallScore >= 60 ? 'BUY' : analysis.overview.overallScore >= 40 ? 'HOLD' : 'SELL') : 'N/A'}
-              </span>
-            </div>
-            <div>
-              <span className="label">Target Price</span>
-              <strong>{targetPriceLabel}</strong>
-            </div>
-          </div>
-        </div>
+
       </section>
 
       <div className="full-report-main-grid">
