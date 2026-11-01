@@ -38,14 +38,21 @@ def _get_finbert_pipeline():
     """
     Lazily initialize and return the local FinBERT sentiment pipeline.
     Uses CUDA if available, otherwise CPU.
+    Loads from local cache first to avoid unnecessary Hugging Face network requests and 404s.
     """
     global _finbert_pipeline
     if _finbert_pipeline is not None:
         return _finbert_pipeline
 
     try:
+        import logging
+
+        # Suppress noisy HTTP logs from huggingface_hub / httpx
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+
         import torch
-        from transformers import pipeline as hf_pipeline
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline as hf_pipeline
 
         device = 0 if torch.cuda.is_available() else -1
         model_name = os.getenv("FINBERT_LOCAL_DIR")
@@ -57,9 +64,20 @@ def _get_finbert_pipeline():
             model_name,
             device,
         )
+
+        try:
+            # Try strictly local cache first (bypasses online checks & 404 logs)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+            model = AutoModelForSequenceClassification.from_pretrained(model_name, local_files_only=True)
+        except Exception:
+            # Fall back to online download if model has not been cached yet
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForSequenceClassification.from_pretrained(model_name)
+
         _finbert_pipeline = hf_pipeline(
             "sentiment-analysis",
-            model=model_name,
+            model=model,
+            tokenizer=tokenizer,
             truncation=True,
             max_length=512,
             device=device,
