@@ -705,19 +705,6 @@ def get_sentiment_analysis(
                             "sentimentScore": round(float(top.get("score", 0.0)), 3),
                         }
                     )
-                # Any remaining headlines beyond finbert_limit get a neutral fallback so user sees all news
-                for h in limited[len(headlines_for_model):]:
-                    per_headline.append(
-                        {
-                            "title": h["title"],
-                            "link": h.get("link", ""),
-                            "source": h.get("source", ""),
-                            "apiSource": h.get("apiSource", "unknown"),
-                            "publishedAt": h.get("publishedAt", ""),
-                            "sentiment": "neutral",
-                            "sentimentScore": 0.0,
-                        }
-                    )
             except Exception as e:
                 logger.warning("FinBERT per-headline analysis failed: %s", e)
 
@@ -733,7 +720,7 @@ def get_sentiment_analysis(
                     "sentiment": "neutral",
                     "sentimentScore": 0.0,
                 }
-                for h in limited
+                for h in headlines_for_model
             ]
 
         # Calculate overall score directly to prevent duplicate inference
