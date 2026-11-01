@@ -14,3 +14,10 @@ from django.core.wsgi import get_wsgi_application
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 
 application = get_wsgi_application()
+
+# Warm up FinBERT on worker boot so user queries never suffer cold-start import lag
+try:
+    from sentiment.services import preload_finbert_model
+    preload_finbert_model()
+except Exception:
+    pass
