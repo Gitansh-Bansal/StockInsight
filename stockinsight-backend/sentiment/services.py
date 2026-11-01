@@ -27,7 +27,7 @@ NEWSAPIAI_REALTIME_LOOKBACK_DAYS = 2
 
 # FinBERT configuration
 FINBERT_MODEL = "ProsusAI/finbert"
-DEFAULT_FINBERT_MAX_HEADLINES = 40
+DEFAULT_FINBERT_MAX_HEADLINES = 15
 
 NEUTRAL_FALLBACK = [{"label": "neutral", "score": 1.0}]
 
@@ -89,8 +89,14 @@ def _query_local_finbert(headlines_list: List[str]) -> List[List[dict]]:
         logger.warning("FinBERT pipeline not available; using neutral fallback.")
         return [NEUTRAL_FALLBACK] * len(headlines_list)
 
+    t0 = time.perf_counter()
     try:
-        raw_results = pipe(headlines_list, batch_size=16)
+        import torch
+
+        inference_context = getattr(torch, "inference_mode", torch.no_grad)
+        with inference_context():
+            raw_results = pipe(headlines_list, batch_size=16)
+
         all_results = []
         for r in raw_results:
             if isinstance(r, dict):
@@ -104,6 +110,14 @@ def _query_local_finbert(headlines_list: List[str]) -> List[List[dict]]:
                 all_results.append([{"label": label, "score": score}])
             else:
                 all_results.append(NEUTRAL_FALLBACK)
+
+        duration = time.perf_counter() - t0
+        logger.info(
+            "FinBERT local inference completed: %d headlines in %.3fs (%.1f ms/headline)",
+            len(headlines_list),
+            duration,
+            (duration / len(headlines_list)) * 1000 if headlines_list else 0,
+        )
         return all_results
     except Exception as e:
         logger.warning("FinBERT local inference failed: %s; using neutral fallback.", e)
@@ -245,8 +259,11 @@ def _analyze_with_finbert(headlines: List[str]) -> float:
     if not headlines:
         return 50.0
 
+    finbert_limit = max(1, _env_int("FINBERT_MAX_HEADLINES", DEFAULT_FINBERT_MAX_HEADLINES))
+    headlines_to_run = headlines[:finbert_limit]
+
     try:
-        results = _query_local_finbert(headlines)
+        results = _query_local_finbert(headlines_to_run)
     except Exception as e:
         logger.warning("FinBERT batch analysis failed: %s", e)
         return 50.0
@@ -662,16 +679,19 @@ def get_sentiment_analysis(
 
         # Limit to max_news for analysis
         limited = unique_headlines[:max_news]
-        titles_for_model = [h["title"] for h in limited]
-
-        # print(titles_for_model) #############################################
+        finbert_limit = max(
+            1,
+            _env_int("FINBERT_MAX_HEADLINES", DEFAULT_FINBERT_MAX_HEADLINES),
+        )
+        headlines_for_model = limited[:finbert_limit]
+        titles_for_model = [h["title"] for h in headlines_for_model]
 
         # Run FinBERT batch analysis via local transformers pipeline
         per_headline = []
         if titles_for_model:
             try:
                 results = _query_local_finbert(titles_for_model)
-                for h, res in zip(limited, results):
+                for h, res in zip(headlines_for_model, results):
                     # Each res is a list of label/score dicts; pick the top one
                     top = res[0] if isinstance(res, list) and res else res
                     per_headline.append(
@@ -683,6 +703,19 @@ def get_sentiment_analysis(
                             "publishedAt": h.get("publishedAt", ""),
                             "sentiment": top.get("label", "neutral"),
                             "sentimentScore": round(float(top.get("score", 0.0)), 3),
+                        }
+                    )
+                # Any remaining headlines beyond finbert_limit get a neutral fallback so user sees all news
+                for h in limited[len(headlines_for_model):]:
+                    per_headline.append(
+                        {
+                            "title": h["title"],
+                            "link": h.get("link", ""),
+                            "source": h.get("source", ""),
+                            "apiSource": h.get("apiSource", "unknown"),
+                            "publishedAt": h.get("publishedAt", ""),
+                            "sentiment": "neutral",
+                            "sentimentScore": 0.0,
                         }
                     )
             except Exception as e:
