@@ -286,18 +286,18 @@ def run_parallel_comparison(tickers: list[str]) -> dict[str, Any]:
         len(clean_tickers),
     )
 
-    # Validate HF API key is available before workers begin.
+    # Validate FinBERT model is loaded before workers begin.
     prewarm_started = time.perf_counter()
     finbert_ready = preload_finbert_model()
     _timing_log(
         timing_logs_enabled,
-        "PROCESS_STAGE hf_api_check ready=%s duration_s=%.3f",
+        "PROCESS_STAGE finbert_ready_check ready=%s duration_s=%.3f",
         finbert_ready,
         time.perf_counter() - prewarm_started,
     )
     if not finbert_ready:
         logger.warning(
-            "HF API key not configured; sentiment will use neutral fallback."
+            "FinBERT model not loaded; sentiment will use neutral fallback."
         )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
